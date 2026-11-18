@@ -5,6 +5,7 @@ import os
 import smtplib
 import urllib.error
 import urllib.request
+import unicodedata
 from datetime import date, datetime
 from email.message import EmailMessage
 from functools import wraps
@@ -59,6 +60,11 @@ def login_required(fn):
     def wrapped(*args, **kwargs):
         if not session.get("user_id"):
             return redirect(url_for("login"))
+        if session.get("user_role", "teacher") == "student":
+            if session.get("must_change_password") and request.endpoint != "student_change_password":
+                return redirect(url_for("student_change_password"))
+            if request.endpoint not in ("student_attendance", "student_change_password"):
+                return redirect(url_for("student_attendance"))
         return fn(*args, **kwargs)
     return wrapped
 
@@ -71,7 +77,7 @@ def common_values():
         or all(os.getenv(key) for key in ("SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD", "SMTP_FROM"))
     )
     return {"today": date.today().isoformat(), "current_user": session.get("username"),
-            "email_ready": email_ready}
+            "current_role": session.get("user_role", "teacher"), "email_ready": email_ready}
 
 
 def record_notification(student_id, attendance_date, subject_name, channel, recipient, status, details=""):
@@ -191,21 +197,79 @@ def send_guardian_email(student, attendance_date, subject_name, status):
     return results
 
 
-@app.route("/login", methods=["GET", "POST"])
+@app.get("/login")
 def login():
     if session.get("user_id"):
+        if session.get("user_role") == "student":
+            return redirect(url_for("student_change_password" if session.get("must_change_password") else "student_attendance"))
+        return redirect(url_for("dashboard"))
+    return render_template("login.html")
+
+
+def student_name_key(full_name):
+    normalized = unicodedata.normalize("NFKD", full_name).encode("ascii", "ignore").decode("ascii").lower()
+    key = "".join(character for character in normalized if character.isalnum())
+    return key or "student"
+
+
+def create_student_login(cur, student_id, full_name, dob):
+    name_key = student_name_key(full_name)
+    suffix = dob.strftime("%d%m%y")
+    base = f"{name_key[:42]}{suffix}"
+    username = base
+    duplicate_number = 2
+    while True:
+        cur.execute("SELECT id FROM users WHERE username=%s", (username,))
+        if not cur.fetchone():
+            break
+        extra = str(duplicate_number)
+        username = f"{name_key[:max(1, 49-len(suffix)-len(extra))]}{suffix}{extra}"
+        duplicate_number += 1
+    initial_password = f"{name_key}@123"
+    cur.execute("""INSERT INTO users(username,password_hash,role,student_id,must_change_password)
+      VALUES(%s,%s,'student',%s,1)""",
+      (username, generate_password_hash(initial_password), student_id))
+    return username, initial_password
+
+
+def authenticate_user(expected_role):
+    if session.get("user_id"):
+        if session.get("user_role") == "student":
+            return redirect(url_for("student_change_password" if session.get("must_change_password") else "student_attendance"))
         return redirect(url_for("dashboard"))
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         user = query("SELECT * FROM users WHERE username=%s", (username,), one=True)
-        if user and check_password_hash(user["password_hash"], request.form.get("password", "")):
+        actual_role = user.get("role", "teacher") if user else None
+        account_active = True
+        if user and actual_role == "student":
+            linked_student = query("SELECT id FROM students WHERE id=%s AND active=1", (user.get("student_id"),), one=True)
+            account_active = bool(linked_student)
+        if (user and actual_role == expected_role and account_active and
+                check_password_hash(user["password_hash"], request.form.get("password", ""))):
             session.clear()
             session["user_id"] = user["id"]
             session["username"] = user["username"]
+            session["user_role"] = actual_role
+            if actual_role == "student":
+                session["student_id"] = user["student_id"]
+                session["must_change_password"] = bool(user.get("must_change_password"))
             flash("Welcome back!", "success")
+            if actual_role == "student":
+                return redirect(url_for("student_change_password" if session["must_change_password"] else "student_attendance"))
             return redirect(url_for("dashboard"))
         flash("Username ya password sahi nahi hai.", "error")
-    return render_template("login.html")
+    return render_template("login_form.html", login_role=expected_role)
+
+
+@app.route("/login/teacher", methods=["GET", "POST"])
+def teacher_login():
+    return authenticate_user("teacher")
+
+
+@app.route("/login/student", methods=["GET", "POST"])
+def student_login():
+    return authenticate_user("student")
 
 
 @app.get("/logout")
@@ -217,6 +281,8 @@ def logout():
 @app.get("/")
 @login_required
 def dashboard():
+    if session.get("user_role") == "student":
+        return redirect(url_for("student_attendance"))
     counts = query("""SELECT COUNT(*) total,
       SUM(CASE WHEN status='Present' THEN 1 ELSE 0 END) present,
       SUM(CASE WHEN status='Absent' THEN 1 ELSE 0 END) absent,
@@ -229,6 +295,50 @@ def dashboard():
     return render_template("dashboard.html", counts=counts, student_count=student_count, recent=recent)
 
 
+@app.get("/student/attendance")
+@login_required
+def student_attendance():
+    if session.get("user_role") != "student" or not session.get("student_id"):
+        return redirect(url_for("dashboard"))
+    student = query("SELECT id,roll_no,full_name,class_name,section,date_of_birth FROM students WHERE id=%s AND active=1",
+                    (session["student_id"],), one=True)
+    if not student:
+        session.clear()
+        flash("Student account active nahi hai. Teacher se sampark karein.", "error")
+        return redirect(url_for("student_login"))
+    rows = query("""SELECT a.attendance_date,sub.subject_name,a.status
+      FROM attendance a LEFT JOIN subjects sub ON sub.id=a.subject_id
+      WHERE a.student_id=%s ORDER BY a.attendance_date DESC,sub.subject_name LIMIT 100""", (student["id"],))
+    counts = query("""SELECT COUNT(*) total,
+      COALESCE(SUM(status='Present'),0) present,
+      COALESCE(SUM(status='Absent'),0) absent,
+      COALESCE(SUM(status='Late'),0) late,
+      ROUND(100*COALESCE(SUM(status='Present'),0)/NULLIF(COUNT(*),0),1) percentage
+      FROM attendance WHERE student_id=%s""", (student["id"],), one=True)
+    return render_template("student_attendance.html", student=student, rows=rows, counts=counts)
+
+
+@app.route("/student/change-password", methods=["GET", "POST"])
+@login_required
+def student_change_password():
+    if session.get("user_role") != "student":
+        return redirect(url_for("dashboard"))
+    if request.method == "POST":
+        password = request.form.get("password", "")
+        confirm = request.form.get("confirm_password", "")
+        if len(password) < 8:
+            flash("Naya password kam se kam 8 characters ka hona chahiye.", "error")
+        elif password != confirm:
+            flash("Dono password match nahi karte.", "error")
+        else:
+            query("UPDATE users SET password_hash=%s,must_change_password=0 WHERE id=%s AND role='student'",
+                  (generate_password_hash(password), session["user_id"]), write=True)
+            session["must_change_password"] = False
+            flash("Password update ho gaya.", "success")
+            return redirect(url_for("student_attendance"))
+    return render_template("student_change_password.html")
+
+
 @app.route("/students", methods=["GET", "POST"])
 @login_required
 def students():
@@ -238,19 +348,35 @@ def students():
         klass = request.form.get("class_name", "").strip()
         section = request.form.get("section", "").strip()
         email = request.form.get("email", "").strip() or None
+        dob_text = request.form.get("date_of_birth", "").strip()
         guardian_name = request.form.get("guardian_name", "").strip() or None
         guardian_email = request.form.get("guardian_email", "").strip() or None
-        if not roll or not name or not klass:
-            flash("Roll number, name aur class zaroori hain.", "error")
+        try:
+            dob = date.fromisoformat(dob_text)
+        except ValueError:
+            dob = None
+        if not roll or not name or not klass or not dob:
+            flash("Roll number, name, class aur valid date of birth zaroori hain.", "error")
+        elif dob > date.today():
+            flash("Date of birth future mein nahi ho sakti.", "error")
         else:
+            conn = db()
+            cur = conn.cursor()
             try:
-                query("""INSERT INTO students(roll_no,full_name,class_name,section,email,guardian_name,guardian_email)
-                  VALUES(%s,%s,%s,%s,%s,%s,%s)""",
-                  (roll, name, klass, section, email, guardian_name, guardian_email), write=True)
-                flash("Student add ho gaya.", "success")
+                cur.execute("""INSERT INTO students(roll_no,full_name,class_name,section,date_of_birth,email,guardian_name,guardian_email)
+                  VALUES(%s,%s,%s,%s,%s,%s,%s,%s)""",
+                  (roll, name, klass, section, dob, email, guardian_name, guardian_email))
+                student_id = cur.lastrowid
+                username, initial_password = create_student_login(cur, student_id, name, dob)
+                conn.commit()
+                flash(f"Student add hua. Student login: {username} · Pehla password: {initial_password}. Student pehli login par password badlega.", "success")
                 return redirect(url_for("students"))
             except mysql.connector.IntegrityError:
+                conn.rollback()
                 flash("Yeh roll number pehle se maujood hai.", "error")
+            finally:
+                cur.close()
+                conn.close()
     search = request.args.get("q", "").strip()
     pattern = f"%{search}%"
     rows = query("""SELECT * FROM students WHERE active=1 AND (%s='' OR roll_no LIKE %s OR full_name LIKE %s OR class_name LIKE %s)
@@ -265,19 +391,55 @@ def edit_student(sid):
     if not student:
         flash("Student nahi mila.", "error")
         return redirect(url_for("students"))
+    student_login = query("SELECT id,username FROM users WHERE student_id=%s", (sid,), one=True)
     if request.method == "POST":
+        full_name = request.form.get("full_name", "").strip()
+        dob_text = request.form.get("date_of_birth", "").strip()
         try:
-            query("""UPDATE students SET roll_no=%s,full_name=%s,class_name=%s,section=%s,email=%s,
-              guardian_name=%s,guardian_email=%s WHERE id=%s""",
-                  (request.form["roll_no"].strip(), request.form["full_name"].strip(), request.form["class_name"].strip(),
-                   request.form.get("section", "").strip(), request.form.get("email", "").strip() or None,
-                   request.form.get("guardian_name", "").strip() or None,
-                   request.form.get("guardian_email", "").strip() or None, sid), write=True)
-            flash("Student details update ho gayi.", "success")
+            dob = date.fromisoformat(dob_text)
+        except ValueError:
+            dob = None
+        if not full_name or not dob:
+            flash("Student ka naam aur valid date of birth zaroori hain.", "error")
+            return render_template("student_edit.html", student=student, student_login=student_login)
+        if dob > date.today():
+            flash("Date of birth future mein nahi ho sakti.", "error")
+            return render_template("student_edit.html", student=student, student_login=student_login)
+        try:
+            conn = db()
+            cur = conn.cursor()
+            try:
+                cur.execute("""UPDATE students SET roll_no=%s,full_name=%s,class_name=%s,section=%s,date_of_birth=%s,email=%s,
+                  guardian_name=%s,guardian_email=%s WHERE id=%s""",
+                    (request.form["roll_no"].strip(), full_name, request.form["class_name"].strip(),
+                     request.form.get("section", "").strip(), dob,
+                     request.form.get("email", "").strip() or None,
+                     request.form.get("guardian_name", "").strip() or None,
+                     request.form.get("guardian_email", "").strip() or None, sid))
+                created_login = None
+                if not student_login:
+                    created_login = create_student_login(cur, sid, full_name, dob)
+                elif request.form.get("reset_student_password") == "yes":
+                    reset_password = f"{student_name_key(full_name)}@123"
+                    cur.execute("UPDATE users SET password_hash=%s,must_change_password=1 WHERE id=%s",
+                                (generate_password_hash(reset_password), student_login["id"]))
+                    created_login = (student_login["username"], reset_password)
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                cur.close()
+                conn.close()
+            if created_login:
+                flash(f"Student details update ho gayi. Student login: {created_login[0]} · Pehla password: {created_login[1]}. Student pehli login par password badlega.", "success")
+            else:
+                flash("Student details update ho gayi.", "success")
             return redirect(url_for("students"))
         except mysql.connector.IntegrityError:
-            flash("Yeh roll number kisi aur student ka hai.", "error")
-    return render_template("student_edit.html", student=student)
+            flash("Yeh roll number ya login username kisi aur account mein use ho raha hai.", "error")
+            student_login = query("SELECT id,username FROM users WHERE student_id=%s", (sid,), one=True)
+    return render_template("student_edit.html", student=student, student_login=student_login)
 
 
 @app.post("/students/<int:sid>/delete")

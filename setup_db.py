@@ -22,6 +22,9 @@ cur.execute("""CREATE TABLE IF NOT EXISTS users (
   id INT AUTO_INCREMENT PRIMARY KEY,
   username VARCHAR(50) NOT NULL UNIQUE,
   password_hash VARCHAR(255) NOT NULL,
+  role VARCHAR(20) NOT NULL DEFAULT 'teacher',
+  student_id INT NULL,
+  must_change_password TINYINT(1) NOT NULL DEFAULT 0,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )""")
 cur.execute("""CREATE TABLE IF NOT EXISTS students (
@@ -30,6 +33,7 @@ cur.execute("""CREATE TABLE IF NOT EXISTS students (
   full_name VARCHAR(120) NOT NULL,
   class_name VARCHAR(50) NOT NULL,
   section VARCHAR(20) DEFAULT '',
+  date_of_birth DATE NULL,
   email VARCHAR(120),
   guardian_name VARCHAR(120),
   guardian_email VARCHAR(120),
@@ -46,6 +50,25 @@ cur.execute("""CREATE TABLE IF NOT EXISTS subjects (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY unique_class_subject (class_name, subject_name)
 )""")
+
+# Add role-based accounts to older databases without changing existing teacher logins.
+for column_name, column_type in (("role", "VARCHAR(20) NOT NULL DEFAULT 'teacher'"),
+                                 ("student_id", "INT NULL"),
+                                 ("must_change_password", "TINYINT(1) NOT NULL DEFAULT 0")):
+    cur.execute("SHOW COLUMNS FROM users LIKE %s", (column_name,))
+    if not cur.fetchone():
+        cur.execute(f"ALTER TABLE users ADD COLUMN {column_name} {column_type}")
+cur.execute("""SELECT COUNT(*) FROM information_schema.statistics
+  WHERE table_schema=%s AND table_name='users' AND index_name='unique_student_login'""", (db_name,))
+if not cur.fetchone()[0]:
+    cur.execute("ALTER TABLE users ADD UNIQUE KEY unique_student_login (student_id)")
+cur.execute("""SELECT COUNT(*) FROM information_schema.table_constraints
+  WHERE constraint_schema=%s AND table_name='users' AND constraint_name='fk_users_student'""", (db_name,))
+if not cur.fetchone()[0]:
+    cur.execute("ALTER TABLE users ADD CONSTRAINT fk_users_student FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE SET NULL")
+cur.execute("SHOW COLUMNS FROM students LIKE 'date_of_birth'")
+if not cur.fetchone():
+    cur.execute("ALTER TABLE students ADD COLUMN date_of_birth DATE NULL AFTER section")
 cur.execute("""CREATE TABLE IF NOT EXISTS attendance (
   id INT AUTO_INCREMENT PRIMARY KEY,
   student_id INT NOT NULL,
