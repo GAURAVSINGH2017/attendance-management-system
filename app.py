@@ -1,15 +1,10 @@
 import csv
-import base64
 import io
-import json
 import os
 import smtplib
 from datetime import date, datetime
 from email.message import EmailMessage
 from functools import wraps
-from urllib.parse import urlencode
-from urllib.request import Request, urlopen
-
 import mysql.connector
 from dotenv import load_dotenv
 from flask import Flask, Response, flash, jsonify, redirect, render_template, request, session, url_for
@@ -68,11 +63,8 @@ def login_required(fn):
 @app.context_processor
 def common_values():
     email_ready = all(os.getenv(key) for key in ("SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD", "SMTP_FROM"))
-    traccar_ready = bool(os.getenv("TRACCAR_SMS_TOKEN"))
-    twilio_ready = all(os.getenv(key) for key in ("TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER"))
-    sms_ready = traccar_ready or twilio_ready
     return {"today": date.today().isoformat(), "current_user": session.get("username"),
-            "email_ready": email_ready, "sms_ready": sms_ready}
+            "email_ready": email_ready}
 
 
 def record_notification(student_id, attendance_date, subject_name, channel, recipient, status, details=""):
@@ -84,11 +76,9 @@ def record_notification(student_id, attendance_date, subject_name, channel, reci
         app.logger.exception("Could not save notification delivery log")
 
 
-def send_guardian_notifications(student, attendance_date, subject_name, status):
+def send_guardian_email(student, attendance_date, subject_name, status):
     results = []
     date_label = datetime.strptime(attendance_date, "%Y-%m-%d").strftime("%d %b %Y")
-    text = (f"Attendance update: {student['full_name']} (Class {student['class_name']}) was marked "
-            f"{status} in {subject_name} on {date_label}. - AttendEase")
 
     email_to = (student.get("guardian_email") or "").strip()
     if email_to and all(os.getenv(key) for key in ("SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD", "SMTP_FROM")):
@@ -121,36 +111,6 @@ def send_guardian_notifications(student, attendance_date, subject_name, status):
         except Exception as exc:
             record_notification(student["id"], attendance_date, subject_name, "Email", email_to, "Failed", str(exc))
             results.append({"channel": "Email", "sent": False})
-
-    phone = (student.get("guardian_phone") or "").strip()
-    traccar_token = os.getenv("TRACCAR_SMS_TOKEN")
-    if phone and traccar_token:
-        try:
-            endpoint = os.getenv("TRACCAR_SMS_URL", "https://www.traccar.org/sms/")
-            body = json.dumps({"to": phone, "message": text}).encode()
-            req = Request(endpoint, data=body, headers={"Authorization": traccar_token, "Content-Type": "application/json"})
-            with urlopen(req, timeout=20) as response:
-                response.read()
-            record_notification(student["id"], attendance_date, subject_name, "SMS", phone, "Sent", "Accepted by Traccar SMS relay; handset delivery not confirmed")
-            results.append({"channel": "SMS", "sent": True})
-        except Exception as exc:
-            record_notification(student["id"], attendance_date, subject_name, "SMS", phone, "Failed", str(exc))
-            results.append({"channel": "SMS", "sent": False})
-    else:
-        sid, token, from_number = (os.getenv("TWILIO_ACCOUNT_SID"), os.getenv("TWILIO_AUTH_TOKEN"), os.getenv("TWILIO_FROM_NUMBER"))
-        if phone and sid and token and from_number:
-            try:
-                endpoint = f"https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json"
-                body = urlencode({"To": phone, "From": from_number, "Body": text}).encode()
-                auth = base64.b64encode(f"{sid}:{token}".encode()).decode()
-                req = Request(endpoint, data=body, headers={"Authorization": f"Basic {auth}", "Content-Type": "application/x-www-form-urlencoded"})
-                with urlopen(req, timeout=20) as response:
-                    response.read()
-                record_notification(student["id"], attendance_date, subject_name, "SMS", phone, "Sent", "Accepted by Twilio")
-                results.append({"channel": "SMS", "sent": True})
-            except Exception as exc:
-                record_notification(student["id"], attendance_date, subject_name, "SMS", phone, "Failed", str(exc))
-                results.append({"channel": "SMS", "sent": False})
     return results
 
 
@@ -203,14 +163,13 @@ def students():
         email = request.form.get("email", "").strip() or None
         guardian_name = request.form.get("guardian_name", "").strip() or None
         guardian_email = request.form.get("guardian_email", "").strip() or None
-        guardian_phone = request.form.get("guardian_phone", "").strip() or None
         if not roll or not name or not klass:
             flash("Roll number, name aur class zaroori hain.", "error")
         else:
             try:
-                query("""INSERT INTO students(roll_no,full_name,class_name,section,email,guardian_name,guardian_email,guardian_phone)
-                  VALUES(%s,%s,%s,%s,%s,%s,%s,%s)""",
-                  (roll, name, klass, section, email, guardian_name, guardian_email, guardian_phone), write=True)
+                query("""INSERT INTO students(roll_no,full_name,class_name,section,email,guardian_name,guardian_email)
+                  VALUES(%s,%s,%s,%s,%s,%s,%s)""",
+                  (roll, name, klass, section, email, guardian_name, guardian_email), write=True)
                 flash("Student add ho gaya.", "success")
                 return redirect(url_for("students"))
             except mysql.connector.IntegrityError:
@@ -232,12 +191,11 @@ def edit_student(sid):
     if request.method == "POST":
         try:
             query("""UPDATE students SET roll_no=%s,full_name=%s,class_name=%s,section=%s,email=%s,
-              guardian_name=%s,guardian_email=%s,guardian_phone=%s WHERE id=%s""",
+              guardian_name=%s,guardian_email=%s WHERE id=%s""",
                   (request.form["roll_no"].strip(), request.form["full_name"].strip(), request.form["class_name"].strip(),
                    request.form.get("section", "").strip(), request.form.get("email", "").strip() or None,
                    request.form.get("guardian_name", "").strip() or None,
-                   request.form.get("guardian_email", "").strip() or None,
-                   request.form.get("guardian_phone", "").strip() or None, sid), write=True)
+                   request.form.get("guardian_email", "").strip() or None, sid), write=True)
             flash("Student details update ho gayi.", "success")
             return redirect(url_for("students"))
         except mysql.connector.IntegrityError:
@@ -331,7 +289,7 @@ def api_attendance_summary():
 @login_required
 def notifications():
     logs = query("""SELECT n.*,s.full_name,s.roll_no FROM notification_logs n
-      JOIN students s ON s.id=n.student_id ORDER BY n.created_at DESC LIMIT 50""")
+      JOIN students s ON s.id=n.student_id WHERE n.channel='Email' ORDER BY n.created_at DESC LIMIT 50""")
     return render_template("notifications.html", logs=logs)
 
 
@@ -356,7 +314,7 @@ def attendance():
             flash("Selected subject is class ke liye available nahi hai.", "error")
             return redirect(url_for("attendance", attendance_date=selected, class_name=klass))
         ids = request.form.getlist("student_id")
-        allowed = {str(s["id"]): s for s in query("""SELECT id,roll_no,full_name,class_name,guardian_name,guardian_email,guardian_phone
+        allowed = {str(s["id"]): s for s in query("""SELECT id,roll_no,full_name,class_name,guardian_name,guardian_email
           FROM students WHERE active=1 AND class_name=%s""", (klass,))}
         changed_absences = []
         saved_count = 0
@@ -382,8 +340,8 @@ def attendance():
             cur.close(); conn.close()
         attempts = []
         for student in changed_absences:
-            attempts.extend(send_guardian_notifications(student, selected, valid_subject["subject_name"],
-                                                        request.form.get(f"status_{student['id']}", "Absent")))
+            attempts.extend(send_guardian_email(student, selected, valid_subject["subject_name"],
+                                                 request.form.get(f"status_{student['id']}", "Absent")))
         delivered = sum(1 for attempt in attempts if attempt["sent"])
         failed = sum(1 for attempt in attempts if not attempt["sent"])
         flash(f"{saved_count} students ki attendance save ho gayi.", "success")

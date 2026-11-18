@@ -10,8 +10,8 @@ Mini project built with HTML, CSS, JavaScript, Python Flask and MySQL.
 - Attendance by date, class and subject (Present, Absent, Late)
 - Attendance reports by date range, class, subject and student
 - Below-75% attendance alerts and filtered CSV download
-- Optional guardian email and SMS alerts when a student's status changes to Absent or Late
-- Notification delivery log and channel configuration status
+- Optional guardian email alerts when a student's status changes to Absent or Late
+- Email notification delivery log and configuration status
 - JSON API used by the browser to load subjects dynamically
 - Responsive mobile and tablet layout
 - Deployment configuration for free Render hosting with a MySQL-compatible TiDB database
@@ -57,4 +57,4 @@ The attendance page uses JavaScript `fetch()` to get the selected class's subjec
 
 For free public hosting, follow [DEPLOYMENT.md](DEPLOYMENT.md). The free web service may sleep while idle, but your own computer does not need to stay on.
 
-Email and SMS are optional integrations. Add guardian contacts to student profiles and configure SMTP/Twilio secrets outside source control to activate them.
+Email alerts are optional. Add guardian email addresses to student profiles and configure SMTP secrets outside source control to activate them. The app does not send SMS alerts.
