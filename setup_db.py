@@ -1,0 +1,114 @@
+"""Create or safely upgrade the Attendance Management System schema."""
+import os
+import mysql.connector
+from dotenv import load_dotenv
+from werkzeug.security import generate_password_hash
+
+load_dotenv()
+db_name = os.getenv("DB_NAME") or os.getenv("MYSQLDATABASE", "attendance_db")
+db_options = dict(
+    host=os.getenv("DB_HOST") or os.getenv("MYSQLHOST", "localhost"),
+    port=int(os.getenv("DB_PORT") or os.getenv("MYSQLPORT", "3306")),
+    user=os.getenv("DB_USER") or os.getenv("MYSQLUSER", "root"),
+    password=os.getenv("DB_PASSWORD") or os.getenv("MYSQLPASSWORD", ""),
+    database=db_name,
+)
+if os.getenv("DB_SSL_CA"):
+    db_options.update(ssl_ca=os.getenv("DB_SSL_CA"), ssl_verify_cert=True, ssl_verify_identity=True)
+conn = mysql.connector.connect(**db_options)
+cur = conn.cursor()
+
+cur.execute("""CREATE TABLE IF NOT EXISTS users (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  username VARCHAR(50) NOT NULL UNIQUE,
+  password_hash VARCHAR(255) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)""")
+cur.execute("""CREATE TABLE IF NOT EXISTS students (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  roll_no VARCHAR(30) NOT NULL UNIQUE,
+  full_name VARCHAR(120) NOT NULL,
+  class_name VARCHAR(50) NOT NULL,
+  section VARCHAR(20) DEFAULT '',
+  email VARCHAR(120),
+  guardian_name VARCHAR(120),
+  guardian_email VARCHAR(120),
+  guardian_phone VARCHAR(30),
+  active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)""")
+cur.execute("""CREATE TABLE IF NOT EXISTS subjects (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  class_name VARCHAR(50) NOT NULL,
+  subject_name VARCHAR(80) NOT NULL,
+  teacher_name VARCHAR(120) DEFAULT NULL,
+  active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY unique_class_subject (class_name, subject_name)
+)""")
+cur.execute("""CREATE TABLE IF NOT EXISTS attendance (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  student_id INT NOT NULL,
+  subject_id INT NULL,
+  attendance_date DATE NOT NULL,
+  status ENUM('Present','Absent','Late') NOT NULL DEFAULT 'Absent',
+  marked_by INT,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY one_record_per_student_date_subject (student_id, attendance_date, subject_id),
+  FOREIGN KEY (student_id) REFERENCES students(id),
+  CONSTRAINT fk_attendance_subject FOREIGN KEY (subject_id) REFERENCES subjects(id),
+  FOREIGN KEY (marked_by) REFERENCES users(id)
+)""")
+
+for column_name, column_type in (("guardian_name", "VARCHAR(120) NULL"),
+                                 ("guardian_email", "VARCHAR(120) NULL"),
+                                 ("guardian_phone", "VARCHAR(30) NULL")):
+    cur.execute("SHOW COLUMNS FROM students LIKE %s", (column_name,))
+    if not cur.fetchone():
+        cur.execute(f"ALTER TABLE students ADD COLUMN {column_name} {column_type}")
+
+cur.execute("""CREATE TABLE IF NOT EXISTS notification_logs (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  student_id INT NOT NULL,
+  attendance_date DATE NOT NULL,
+  subject_name VARCHAR(80) NOT NULL,
+  channel ENUM('Email','SMS') NOT NULL,
+  recipient VARCHAR(255) NOT NULL,
+  delivery_status ENUM('Sent','Failed') NOT NULL,
+  details VARCHAR(255) DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (student_id) REFERENCES students(id)
+)""")
+
+# Upgrade an older installation while retaining its students and attendance.
+cur.execute("SHOW COLUMNS FROM attendance LIKE 'subject_id'")
+if not cur.fetchone():
+    cur.execute("ALTER TABLE attendance ADD COLUMN subject_id INT NULL AFTER student_id")
+cur.execute("""SELECT COUNT(*) FROM information_schema.statistics
+  WHERE table_schema=%s AND table_name='attendance' AND index_name='one_record_per_student_date_subject'""", (db_name,))
+if not cur.fetchone()[0]:
+    cur.execute("ALTER TABLE attendance ADD UNIQUE KEY one_record_per_student_date_subject (student_id, attendance_date, subject_id)")
+# Add the replacement index first: MySQL needs an index beginning with student_id
+# to keep the existing student foreign key valid while the old key is removed.
+cur.execute("""SELECT COUNT(*) FROM information_schema.statistics
+  WHERE table_schema=%s AND table_name='attendance' AND index_name='one_record_per_student_per_day'""", (db_name,))
+if cur.fetchone()[0]:
+    cur.execute("ALTER TABLE attendance DROP INDEX one_record_per_student_per_day")
+cur.execute("""SELECT COUNT(*) FROM information_schema.table_constraints
+  WHERE constraint_schema=%s AND table_name='attendance' AND constraint_name='fk_attendance_subject'""", (db_name,))
+if not cur.fetchone()[0]:
+    cur.execute("ALTER TABLE attendance ADD CONSTRAINT fk_attendance_subject FOREIGN KEY (subject_id) REFERENCES subjects(id)")
+
+# Optional first-run admin bootstrap for a hosted deployment.
+bootstrap_username = os.getenv("BOOTSTRAP_ADMIN_USERNAME", "").strip()
+bootstrap_password = os.getenv("BOOTSTRAP_ADMIN_PASSWORD", "")
+if bootstrap_username and len(bootstrap_password) >= 8:
+    cur.execute("SELECT id FROM users WHERE username=%s", (bootstrap_username,))
+    if not cur.fetchone():
+        cur.execute("INSERT INTO users(username,password_hash) VALUES(%s,%s)",
+                    (bootstrap_username, generate_password_hash(bootstrap_password)))
+
+conn.commit()
+cur.close()
+conn.close()
+print("Database schema is ready.")

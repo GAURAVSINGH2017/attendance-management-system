@@ -1,0 +1,13 @@
+document.querySelectorAll('[data-open]').forEach(b=>b.addEventListener('click',()=>document.getElementById(b.dataset.open)?.classList.add('show')));
+document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',()=>b.closest('.modal-backdrop')?.classList.remove('show')));
+document.querySelectorAll('.modal-backdrop').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)m.classList.remove('show')}));
+document.querySelectorAll('[data-confirm]').forEach(f=>f.addEventListener('submit',e=>{if(!confirm(f.dataset.confirm))e.preventDefault()}));
+const navToggle=document.querySelector('.mobile-nav-toggle');
+const sideNav=document.querySelector('.sidebar');
+if(navToggle&&sideNav){navToggle.addEventListener('click',()=>{const expanded=navToggle.getAttribute('aria-expanded')==='true';navToggle.setAttribute('aria-expanded',String(!expanded));sideNav.classList.toggle('mobile-open',!expanded)});sideNav.querySelectorAll('nav a').forEach(link=>link.addEventListener('click',()=>{navToggle.setAttribute('aria-expanded','false');sideNav.classList.remove('mobile-open')}))}
+document.querySelectorAll('[data-set-all]').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.status-select').forEach(s=>{s.value=b.dataset.setAll;s.className='status-select status-'+s.value.toLowerCase()})}));
+document.querySelectorAll('.status-select').forEach(s=>s.addEventListener('change',()=>s.className='status-select status-'+s.value.toLowerCase()));
+const attendanceClass=document.getElementById('attendance-class');
+const attendanceSubject=document.getElementById('attendance-subject');
+if(attendanceClass&&attendanceSubject){attendanceClass.addEventListener('change',async()=>{const previous=attendanceSubject.value;attendanceSubject.innerHTML='<option value="">Loading subjects…</option>';try{const response=await fetch(`/api/classes/${encodeURIComponent(attendanceClass.value)}/subjects`);if(!response.ok)throw new Error('Request failed');const items=await response.json();attendanceSubject.innerHTML='<option value="">Choose subject</option>';items.forEach(item=>{const option=document.createElement('option');option.value=item.id;option.textContent=item.subject_name+(item.teacher_name?' · '+item.teacher_name:'');attendanceSubject.appendChild(option)});if(items.some(item=>String(item.id)===previous))attendanceSubject.value=previous;if(items.length===0)attendanceSubject.innerHTML='<option value="">No subjects for this class</option>'}catch(error){attendanceSubject.innerHTML='<option value="">Could not load subjects</option>'}})}
+setTimeout(()=>document.querySelectorAll('.flash').forEach(f=>{f.style.opacity='0';setTimeout(()=>f.remove(),300)}),5000);

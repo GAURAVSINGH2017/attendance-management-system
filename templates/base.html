@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}AttendEase{% endblock %} · Attendance</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+{% if current_user %}<aside class="sidebar">
+  <div class="brand-row"><a class="brand" href="{{ url_for('dashboard') }}"><span class="brand-icon">A</span><span>Attend<span class="brand-light">Ease</span></span></a><button class="mobile-nav-toggle" type="button" aria-label="Toggle navigation" aria-expanded="false" aria-controls="main-navigation">☰</button></div>
+  <div class="nav-label">MAIN MENU</div>
+  <nav id="main-navigation"><a class="nav-link {{ 'active' if request.endpoint=='dashboard' else '' }}" href="{{ url_for('dashboard') }}"><span>▦</span> Overview</a>
+    <a class="nav-link {{ 'active' if request.endpoint in ['students','edit_student'] else '' }}" href="{{ url_for('students') }}"><span>♙</span> Students</a>
+    <a class="nav-link {{ 'active' if request.endpoint in ['subjects','archive_subject'] else '' }}" href="{{ url_for('subjects') }}"><span>▣</span> Subjects</a>
+    <a class="nav-link {{ 'active' if request.endpoint=='attendance' else '' }}" href="{{ url_for('attendance') }}"><span>✓</span> Mark attendance</a>
+    <a class="nav-link {{ 'active' if request.endpoint in ['reports','export_report'] else '' }}" href="{{ url_for('reports') }}"><span>▤</span> Reports</a>
+    <a class="nav-link {{ 'active' if request.endpoint=='notifications' else '' }}" href="{{ url_for('notifications') }}"><span>✉</span> Notifications</a></nav>
+  <div class="sidebar-bottom"><div class="profile"><span class="avatar">{{ current_user[:1]|upper }}</span><span><b>{{ current_user }}</b><small>Administrator</small></span></div><a class="logout" href="{{ url_for('logout') }}">Sign out ↗</a></div>
+</aside>{% endif %}
+<main class="main {{ 'main-login' if not current_user else '' }}">
+{% if current_user %}<header class="topbar"><div><span class="eyebrow">ATTENDANCE MANAGEMENT</span><h1>{% block heading %}Overview{% endblock %}</h1></div><div class="top-date"><span class="date-dot"></span>{{ today }}</div></header>{% endif %}
+<section class="content">
+  {% with messages=get_flashed_messages(with_categories=true) %}{% if messages %}<div class="flash-wrap">{% for category,message in messages %}<div class="flash {{ category }}">{{ message }}<button type="button" onclick="this.parentElement.remove()">×</button></div>{% endfor %}</div>{% endif %}{% endwith %}
+  {% block content %}{% endblock %}
+</section>
+</main><script src="{{ url_for('static',filename='app.js') }}"></script></body></html>
