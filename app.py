@@ -89,108 +89,77 @@ def record_notification(student_id, attendance_date, subject_name, channel, reci
         app.logger.exception("Could not save notification delivery log")
 
 
-def send_guardian_email(student, attendance_date, subject_name, status):
+def send_attendance_emails(student, attendance_date, subject_name, status):
     results = []
     date_label = datetime.strptime(attendance_date, "%Y-%m-%d").strftime("%d %b %Y")
+    recipients = []
+    guardian_email = (student.get("guardian_email") or "").strip()
+    student_email = (student.get("email") or "").strip()
+    if guardian_email:
+        recipients.append((guardian_email, student.get("guardian_name") or "Parent/Guardian"))
+    if student_email and student_email.casefold() != guardian_email.casefold():
+        recipients.append((student_email, student["full_name"]))
 
-    email_to = (student.get("guardian_email") or "").strip()
     google_script_url = os.getenv("GOOGLE_APPS_SCRIPT_URL")
     google_script_token = os.getenv("GOOGLE_APPS_SCRIPT_TOKEN")
     resend_key = os.getenv("RESEND_API_KEY")
     resend_from = os.getenv("RESEND_FROM")
     smtp_configured = all(os.getenv(key) for key in ("SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD", "SMTP_FROM"))
-    if email_to and google_script_url and google_script_token:
+
+    for email_to, greeting in recipients:
+        subject = f"Attendance update: {student['full_name']} marked {status}"
+        body = (
+            f"Hello {greeting},\n\n"
+            f"{student['full_name']} (Roll {student['roll_no']}, Class {student['class_name']}) "
+            f"was marked {status} for {subject_name} on {date_label}.\n\nAttendEase"
+        )
         try:
-            payload = {
-                "token": google_script_token,
-                "to": email_to,
-                "subject": f"Attendance update: {student['full_name']} marked {status}",
-                "body": (
-                    f"Hello {student.get('guardian_name') or 'Parent/Guardian'},\n\n"
-                    f"{student['full_name']} (Roll {student['roll_no']}, Class {student['class_name']}) "
-                    f"was marked {status} for {subject_name} on {date_label}.\n\nAttendEase"
-                ),
-            }
-            req = urllib.request.Request(
-                google_script_url,
-                data=json.dumps(payload).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
-                method="POST",
-            )
-            with urllib.request.urlopen(req, timeout=20) as response:
-                response_data = json.loads(response.read().decode("utf-8"))
-            if not response_data.get("ok"):
-                raise RuntimeError(response_data.get("error", "Google Apps Script did not confirm the email"))
-            record_notification(student["id"], attendance_date, subject_name, "Email", email_to,
-                                "Sent", "Accepted by Google Apps Script; mailbox delivery not confirmed")
-            results.append({"channel": "Email", "sent": True})
-        except urllib.error.HTTPError as exc:
-            error_body = exc.read().decode("utf-8", errors="replace")[:200]
-            record_notification(student["id"], attendance_date, subject_name, "Email", email_to,
-                                "Failed", f"Google email relay HTTP {exc.code}: {error_body}")
-            results.append({"channel": "Email", "sent": False})
-        except Exception as exc:
-            record_notification(student["id"], attendance_date, subject_name, "Email", email_to,
-                                "Failed", str(exc))
-            results.append({"channel": "Email", "sent": False})
-    elif email_to and resend_key and resend_from:
-        try:
-            payload = {
-                "from": resend_from,
-                "to": [email_to],
-                "subject": f"Attendance update: {student['full_name']} marked {status}",
-                "text": (
-                    f"Hello {student.get('guardian_name') or 'Parent/Guardian'},\n\n"
-                    f"{student['full_name']} (Roll {student['roll_no']}, Class {student['class_name']}) "
-                    f"was marked {status} for {subject_name} on {date_label}.\n\nAttendEase"
-                ),
-            }
-            req = urllib.request.Request(
-                "https://api.resend.com/emails",
-                data=json.dumps(payload).encode("utf-8"),
-                headers={"Authorization": f"Bearer {resend_key}", "Content-Type": "application/json"},
-                method="POST",
-            )
-            with urllib.request.urlopen(req, timeout=15) as response:
-                response_data = json.loads(response.read().decode("utf-8"))
-            record_notification(student["id"], attendance_date, subject_name, "Email", email_to,
-                                "Sent", f"Accepted by Resend; message ID {response_data.get('id', 'unknown')}")
-            results.append({"channel": "Email", "sent": True})
-        except urllib.error.HTTPError as exc:
-            error_body = exc.read().decode("utf-8", errors="replace")[:200]
-            record_notification(student["id"], attendance_date, subject_name, "Email", email_to,
-                                "Failed", f"Resend HTTP {exc.code}: {error_body}")
-            results.append({"channel": "Email", "sent": False})
-        except Exception as exc:
-            record_notification(student["id"], attendance_date, subject_name, "Email", email_to, "Failed", str(exc))
-            results.append({"channel": "Email", "sent": False})
-    elif email_to and smtp_configured:
-        try:
-            message = EmailMessage()
-            message["Subject"] = f"Attendance update: {student['full_name']} marked {status}"
-            message["From"] = os.getenv("SMTP_FROM")
-            message["To"] = email_to
-            message.set_content(
-                f"Hello {student.get('guardian_name') or 'Parent/Guardian'},\n\n"
-                f"{student['full_name']} (Roll {student['roll_no']}, Class {student['class_name']}) "
-                f"was marked {status} for {subject_name} on {date_label}.\n\nAttendEase"
-            )
-            host = os.getenv("SMTP_HOST")
-            port = int(os.getenv("SMTP_PORT", "587"))
-            if os.getenv("SMTP_USE_SSL", "false").lower() == "true":
-                with smtplib.SMTP_SSL(host, port, timeout=15) as smtp:
-                    smtp.login(os.getenv("SMTP_USER"), os.getenv("SMTP_PASSWORD"))
-                    smtp.send_message(message)
-            else:
-                with smtplib.SMTP(host, port, timeout=15) as smtp:
-                    smtp.ehlo()
-                    if os.getenv("SMTP_USE_TLS", "true").lower() == "true":
-                        smtp.starttls()
+            if google_script_url and google_script_token:
+                payload = {"token": google_script_token, "to": email_to, "subject": subject, "body": body}
+                req = urllib.request.Request(google_script_url, data=json.dumps(payload).encode("utf-8"),
+                    headers={"Content-Type": "application/json"}, method="POST")
+                with urllib.request.urlopen(req, timeout=20) as response:
+                    response_data = json.loads(response.read().decode("utf-8"))
+                if not response_data.get("ok"):
+                    raise RuntimeError(response_data.get("error", "Google Apps Script did not confirm the email"))
+                details = "Accepted by Google Apps Script; mailbox delivery not confirmed"
+            elif resend_key and resend_from:
+                payload = {"from": resend_from, "to": [email_to], "subject": subject, "text": body}
+                req = urllib.request.Request("https://api.resend.com/emails", data=json.dumps(payload).encode("utf-8"),
+                    headers={"Authorization": f"Bearer {resend_key}", "Content-Type": "application/json"}, method="POST")
+                with urllib.request.urlopen(req, timeout=15) as response:
+                    response_data = json.loads(response.read().decode("utf-8"))
+                details = f"Accepted by Resend; message ID {response_data.get('id', 'unknown')}"
+            elif smtp_configured:
+                message = EmailMessage()
+                message["Subject"] = subject
+                message["From"] = os.getenv("SMTP_FROM")
+                message["To"] = email_to
+                message.set_content(body)
+                host = os.getenv("SMTP_HOST")
+                port = int(os.getenv("SMTP_PORT", "587"))
+                if os.getenv("SMTP_USE_SSL", "false").lower() == "true":
+                    with smtplib.SMTP_SSL(host, port, timeout=15) as smtp:
+                        smtp.login(os.getenv("SMTP_USER"), os.getenv("SMTP_PASSWORD"))
+                        smtp.send_message(message)
+                else:
+                    with smtplib.SMTP(host, port, timeout=15) as smtp:
                         smtp.ehlo()
-                    smtp.login(os.getenv("SMTP_USER"), os.getenv("SMTP_PASSWORD"))
-                    smtp.send_message(message)
-            record_notification(student["id"], attendance_date, subject_name, "Email", email_to, "Sent", "Accepted by SMTP server")
+                        if os.getenv("SMTP_USE_TLS", "true").lower() == "true":
+                            smtp.starttls()
+                            smtp.ehlo()
+                        smtp.login(os.getenv("SMTP_USER"), os.getenv("SMTP_PASSWORD"))
+                        smtp.send_message(message)
+                details = "Accepted by SMTP server"
+            else:
+                continue
+            record_notification(student["id"], attendance_date, subject_name, "Email", email_to, "Sent", details)
             results.append({"channel": "Email", "sent": True})
+        except urllib.error.HTTPError as exc:
+            error_body = exc.read().decode("utf-8", errors="replace")[:200]
+            provider_error = f"Email provider HTTP {exc.code}: {error_body}"
+            record_notification(student["id"], attendance_date, subject_name, "Email", email_to, "Failed", provider_error)
+            results.append({"channel": "Email", "sent": False})
         except Exception as exc:
             record_notification(student["id"], attendance_date, subject_name, "Email", email_to, "Failed", str(exc))
             results.append({"channel": "Email", "sent": False})
@@ -553,7 +522,7 @@ def attendance():
             flash("Selected subject is class ke liye available nahi hai.", "error")
             return redirect(url_for("attendance", attendance_date=selected, class_name=klass))
         ids = request.form.getlist("student_id")
-        allowed = {str(s["id"]): s for s in query("""SELECT id,roll_no,full_name,class_name,guardian_name,guardian_email
+        allowed = {str(s["id"]): s for s in query("""SELECT id,roll_no,full_name,class_name,email,guardian_name,guardian_email
           FROM students WHERE active=1 AND class_name=%s""", (klass,))}
         changed_absences = []
         saved_count = 0
@@ -579,7 +548,7 @@ def attendance():
             cur.close(); conn.close()
         attempts = []
         for student in changed_absences:
-            attempts.extend(send_guardian_email(student, selected, valid_subject["subject_name"],
+                    attempts.extend(send_attendance_emails(student, selected, valid_subject["subject_name"],
                                                  request.form.get(f"status_{student['id']}", "Absent")))
         delivered = sum(1 for attempt in attempts if attempt["sent"])
         failed = sum(1 for attempt in attempts if not attempt["sent"])

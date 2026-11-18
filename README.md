@@ -10,7 +10,7 @@ Mini project built with HTML, CSS, JavaScript, Python Flask and MySQL.
 - Attendance by date, class and subject (Present, Absent, Late)
 - Attendance reports by date range, class, subject and student
 - Below-75% attendance alerts and filtered CSV download
-- Optional guardian email alerts when a student's status changes to Absent or Late
+- Optional student and guardian email alerts when a student's status changes to Absent or Late
 - Separate teacher and student sign-ins, with students limited to their own attendance
 - Email notification delivery log and configuration status
 - JSON API used by the browser to load subjects dynamically
@@ -58,6 +58,6 @@ The attendance page uses JavaScript `fetch()` to get the selected class's subjec
 
 For free public hosting, follow [DEPLOYMENT.md](DEPLOYMENT.md). The free web service may sleep while idle, but your own computer does not need to stay on.
 
-Email alerts are optional. Add guardian email addresses to student profiles and configure either the Google Apps Script relay (`GOOGLE_APPS_SCRIPT_URL`, `GOOGLE_APPS_SCRIPT_TOKEN`) or Resend (`RESEND_API_KEY`, `RESEND_FROM`) as private hosting environment variables. The Gmail relay is subject to Google's daily quota; Resend requires a verified sending domain for guardian addresses. The app does not send SMS alerts.
+Email alerts are optional. Add student and guardian email addresses to student profiles and configure either the Google Apps Script relay (`GOOGLE_APPS_SCRIPT_URL`, `GOOGLE_APPS_SCRIPT_TOKEN`) or Resend (`RESEND_API_KEY`, `RESEND_FROM`) as private hosting environment variables. The Gmail relay is subject to Google's daily quota; Resend requires a verified sending domain for recipients. The app does not send SMS alerts.
 
 The existing admin account is treated as a teacher account. Add a student's date of birth and the app automatically creates a username from the student's name plus DOB in `DDMMYY` format; the initial password is the normalized student name plus `@123`. The student must choose a new password on first login. Teachers can reset it from the student's edit page. Students sign in separately and can view only their own attendance and report; they cannot edit attendance or other records. There is no public student registration.
