@@ -1,6 +1,7 @@
 import csv
 import base64
 import io
+import json
 import os
 import smtplib
 from datetime import date, datetime
@@ -67,7 +68,9 @@ def login_required(fn):
 @app.context_processor
 def common_values():
     email_ready = all(os.getenv(key) for key in ("SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD", "SMTP_FROM"))
-    sms_ready = all(os.getenv(key) for key in ("TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER"))
+    traccar_ready = bool(os.getenv("TRACCAR_SMS_TOKEN"))
+    twilio_ready = all(os.getenv(key) for key in ("TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER"))
+    sms_ready = traccar_ready or twilio_ready
     return {"today": date.today().isoformat(), "current_user": session.get("username"),
             "email_ready": email_ready, "sms_ready": sms_ready}
 
@@ -120,20 +123,34 @@ def send_guardian_notifications(student, attendance_date, subject_name, status):
             results.append({"channel": "Email", "sent": False})
 
     phone = (student.get("guardian_phone") or "").strip()
-    sid, token, from_number = (os.getenv("TWILIO_ACCOUNT_SID"), os.getenv("TWILIO_AUTH_TOKEN"), os.getenv("TWILIO_FROM_NUMBER"))
-    if phone and sid and token and from_number:
+    traccar_token = os.getenv("TRACCAR_SMS_TOKEN")
+    if phone and traccar_token:
         try:
-            endpoint = f"https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json"
-            body = urlencode({"To": phone, "From": from_number, "Body": text}).encode()
-            auth = base64.b64encode(f"{sid}:{token}".encode()).decode()
-            req = Request(endpoint, data=body, headers={"Authorization": f"Basic {auth}", "Content-Type": "application/x-www-form-urlencoded"})
+            endpoint = os.getenv("TRACCAR_SMS_URL", "https://www.traccar.org/sms/")
+            body = json.dumps({"to": phone, "message": text}).encode()
+            req = Request(endpoint, data=body, headers={"Authorization": traccar_token, "Content-Type": "application/json"})
             with urlopen(req, timeout=20) as response:
                 response.read()
-            record_notification(student["id"], attendance_date, subject_name, "SMS", phone, "Sent", "Accepted by Twilio")
+            record_notification(student["id"], attendance_date, subject_name, "SMS", phone, "Sent", "Accepted by Traccar SMS relay; handset delivery not confirmed")
             results.append({"channel": "SMS", "sent": True})
         except Exception as exc:
             record_notification(student["id"], attendance_date, subject_name, "SMS", phone, "Failed", str(exc))
             results.append({"channel": "SMS", "sent": False})
+    else:
+        sid, token, from_number = (os.getenv("TWILIO_ACCOUNT_SID"), os.getenv("TWILIO_AUTH_TOKEN"), os.getenv("TWILIO_FROM_NUMBER"))
+        if phone and sid and token and from_number:
+            try:
+                endpoint = f"https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json"
+                body = urlencode({"To": phone, "From": from_number, "Body": text}).encode()
+                auth = base64.b64encode(f"{sid}:{token}".encode()).decode()
+                req = Request(endpoint, data=body, headers={"Authorization": f"Basic {auth}", "Content-Type": "application/x-www-form-urlencoded"})
+                with urlopen(req, timeout=20) as response:
+                    response.read()
+                record_notification(student["id"], attendance_date, subject_name, "SMS", phone, "Sent", "Accepted by Twilio")
+                results.append({"channel": "SMS", "sent": True})
+            except Exception as exc:
+                record_notification(student["id"], attendance_date, subject_name, "SMS", phone, "Failed", str(exc))
+                results.append({"channel": "SMS", "sent": False})
     return results
 
 
