@@ -1,7 +1,10 @@
 import csv
 import io
+import json
 import os
 import smtplib
+import urllib.error
+import urllib.request
 from datetime import date, datetime
 from email.message import EmailMessage
 from functools import wraps
@@ -62,7 +65,9 @@ def login_required(fn):
 
 @app.context_processor
 def common_values():
-    email_ready = all(os.getenv(key) for key in ("SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD", "SMTP_FROM"))
+    email_ready = bool(os.getenv("RESEND_API_KEY") and os.getenv("RESEND_FROM")) or all(
+        os.getenv(key) for key in ("SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD", "SMTP_FROM")
+    )
     return {"today": date.today().isoformat(), "current_user": session.get("username"),
             "email_ready": email_ready}
 
@@ -81,7 +86,41 @@ def send_guardian_email(student, attendance_date, subject_name, status):
     date_label = datetime.strptime(attendance_date, "%Y-%m-%d").strftime("%d %b %Y")
 
     email_to = (student.get("guardian_email") or "").strip()
-    if email_to and all(os.getenv(key) for key in ("SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD", "SMTP_FROM")):
+    resend_key = os.getenv("RESEND_API_KEY")
+    resend_from = os.getenv("RESEND_FROM")
+    smtp_configured = all(os.getenv(key) for key in ("SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD", "SMTP_FROM"))
+    if email_to and resend_key and resend_from:
+        try:
+            payload = {
+                "from": resend_from,
+                "to": [email_to],
+                "subject": f"Attendance update: {student['full_name']} marked {status}",
+                "text": (
+                    f"Hello {student.get('guardian_name') or 'Parent/Guardian'},\n\n"
+                    f"{student['full_name']} (Roll {student['roll_no']}, Class {student['class_name']}) "
+                    f"was marked {status} for {subject_name} on {date_label}.\n\nAttendEase"
+                ),
+            }
+            req = urllib.request.Request(
+                "https://api.resend.com/emails",
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Authorization": f"Bearer {resend_key}", "Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=15) as response:
+                response_data = json.loads(response.read().decode("utf-8"))
+            record_notification(student["id"], attendance_date, subject_name, "Email", email_to,
+                                "Sent", f"Accepted by Resend; message ID {response_data.get('id', 'unknown')}")
+            results.append({"channel": "Email", "sent": True})
+        except urllib.error.HTTPError as exc:
+            error_body = exc.read().decode("utf-8", errors="replace")[:200]
+            record_notification(student["id"], attendance_date, subject_name, "Email", email_to,
+                                "Failed", f"Resend HTTP {exc.code}: {error_body}")
+            results.append({"channel": "Email", "sent": False})
+        except Exception as exc:
+            record_notification(student["id"], attendance_date, subject_name, "Email", email_to, "Failed", str(exc))
+            results.append({"channel": "Email", "sent": False})
+    elif email_to and smtp_configured:
         try:
             message = EmailMessage()
             message["Subject"] = f"Attendance update: {student['full_name']} marked {status}"

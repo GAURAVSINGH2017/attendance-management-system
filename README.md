@@ -57,4 +57,4 @@ The attendance page uses JavaScript `fetch()` to get the selected class's subjec
 
 For free public hosting, follow [DEPLOYMENT.md](DEPLOYMENT.md). The free web service may sleep while idle, but your own computer does not need to stay on.
 
-Email alerts are optional. Add guardian email addresses to student profiles and configure SMTP secrets outside source control to activate them. The app does not send SMS alerts.
+Email alerts are optional. Add guardian email addresses to student profiles and configure `RESEND_API_KEY` and `RESEND_FROM` as private hosting environment variables. Resend requires a verified sending domain for sending to guardian addresses. The app does not send SMS alerts.
