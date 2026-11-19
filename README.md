@@ -12,6 +12,7 @@ Mini project built with HTML, CSS, JavaScript, Python Flask and MySQL.
 - Below-75% attendance alerts and filtered CSV download
 - Optional student and guardian email alerts when a student's status changes to Absent or Late
 - Separate teacher and student sign-ins, with students limited to their own attendance
+- Class and section pages with bulk student entry and section-wise attendance
 - Email notification delivery log and configuration status
 - JSON API used by the browser to load subjects dynamically
 - Responsive mobile and tablet layout

@@ -444,6 +444,96 @@ def delete_student(sid):
     return redirect(url_for("students"))
 
 
+@app.route("/classes", methods=["GET", "POST"])
+@login_required
+def classes():
+    if request.method == "POST":
+        class_name = request.form.get("class_name", "").strip()
+        section = request.form.get("section", "").strip()
+        try:
+            count = int(request.form.get("student_count", "0"))
+        except ValueError:
+            count = 0
+        if not class_name or not section or not 1 <= count <= 60:
+            flash("Class, section aur 1 se 60 tak students ki sankhya bharo.", "error")
+        else:
+            session["bulk_class_setup"] = {"class_name": class_name, "section": section, "count": count}
+            return redirect(url_for("bulk_add_students"))
+    groups = query("""SELECT class_name,COALESCE(section,'') section,COUNT(*) student_count
+      FROM students WHERE active=1 GROUP BY class_name,COALESCE(section,'') ORDER BY class_name,section""")
+    return render_template("classes.html", classes=groups,
+        class_name_value=request.args.get("class_name", ""), section_value=request.args.get("section", ""))
+
+
+@app.route("/classes/add-students", methods=["GET", "POST"])
+@login_required
+def bulk_add_students():
+    setup = session.get("bulk_class_setup")
+    if not setup:
+        flash("Pehle class aur section ki jankari bharo.", "error")
+        return redirect(url_for("classes"))
+    if request.method == "POST":
+        new_students = []
+        errors = []
+        for index in range(setup["count"]):
+            prefix = f"student_{index}_"
+            row = {key: request.form.get(prefix + key, "").strip() for key in
+                   ("roll_no", "full_name", "date_of_birth", "email", "guardian_name", "guardian_email")}
+            try:
+                dob = date.fromisoformat(row["date_of_birth"])
+            except ValueError:
+                dob = None
+            if not row["roll_no"] or not row["full_name"] or not dob:
+                errors.append(f"Student {index + 1}: roll number, name aur DOB zaroori hain.")
+            elif dob > date.today():
+                errors.append(f"Student {index + 1}: DOB future mein nahi ho sakti.")
+            row["dob"] = dob
+            new_students.append(row)
+        if errors:
+            for message in errors[:5]:
+                flash(message, "error")
+        else:
+            conn = db()
+            cur = conn.cursor()
+            credentials = []
+            try:
+                for row in new_students:
+                    cur.execute("""INSERT INTO students(roll_no,full_name,class_name,section,date_of_birth,email,guardian_name,guardian_email)
+                      VALUES(%s,%s,%s,%s,%s,%s,%s,%s)""",
+                      (row["roll_no"], row["full_name"], setup["class_name"], setup["section"], row["dob"],
+                       row["email"] or None, row["guardian_name"] or None, row["guardian_email"] or None))
+                    username, initial_password = create_student_login(cur, cur.lastrowid, row["full_name"], row["dob"])
+                    credentials.append({"full_name": row["full_name"], "roll_no": row["roll_no"],
+                                        "username": username, "initial_password": initial_password})
+                conn.commit()
+                session.pop("bulk_class_setup", None)
+                return render_template("class_added.html", class_name=setup["class_name"],
+                                       section=setup["section"], credentials=credentials)
+            except mysql.connector.IntegrityError:
+                conn.rollback()
+                flash("Kisi student ka roll number pehle se use ho raha hai. Roll numbers check karke dobara save karo.", "error")
+            finally:
+                cur.close()
+                conn.close()
+    return render_template("bulk_add_students.html", setup=setup, student_slots=range(setup["count"]))
+
+
+@app.get("/classes/detail")
+@login_required
+def class_detail():
+    class_name = request.args.get("class_name", "").strip()
+    section_arg = request.args.get("section")
+    section = (section_arg or "").strip()
+    if not class_name or section_arg is None:
+        return redirect(url_for("classes"))
+    rows = query("""SELECT s.id,s.roll_no,s.full_name,s.class_name,s.section,s.date_of_birth,s.email,
+      u.username,u.must_change_password FROM students s LEFT JOIN users u ON u.student_id=s.id
+      WHERE s.active=1 AND s.class_name=%s AND COALESCE(s.section,'')=%s ORDER BY s.roll_no""", (class_name, section))
+    for row in rows:
+        row["initial_password"] = f"{student_name_key(row['full_name'])}@123" if row.get("must_change_password") else None
+    return render_template("class_detail.html", class_name=class_name, section=section, students=rows)
+
+
 @app.route("/subjects", methods=["GET", "POST"])
 @login_required
 def subjects():
@@ -491,6 +581,13 @@ def api_class_subjects(class_name):
     return jsonify(query("SELECT id,subject_name,teacher_name FROM subjects WHERE active=1 AND class_name=%s ORDER BY subject_name", (class_name,)))
 
 
+@app.get("/api/classes/<class_name>/sections")
+@login_required
+def api_class_sections(class_name):
+    return jsonify(query("""SELECT DISTINCT COALESCE(section,'') section FROM students
+      WHERE active=1 AND class_name=%s ORDER BY section""", (class_name,)))
+
+
 @app.get("/api/students")
 @login_required
 def api_students():
@@ -535,20 +632,30 @@ def attendance():
     except ValueError:
         selected = date.today().isoformat()
     klass = request.values.get("class_name", "")
+    selected_section_value = request.values.get("section", "")
     subject_id = request.values.get("subject_id", "")
     classes = query("SELECT DISTINCT class_name FROM students WHERE active=1 ORDER BY class_name")
+    sections = query("""SELECT DISTINCT COALESCE(section,'') section FROM students
+      WHERE active=1 AND class_name=%s ORDER BY section""", (klass,)) if klass else []
+    if request.method == "GET" and klass and not selected_section_value:
+        if len(sections) == 1:
+            selected_section_value = sections[0]["section"] or "__blank__"
+        elif len(sections) > 1:
+            selected_section_value = "__choose__"
+    section = "" if selected_section_value == "__blank__" else selected_section_value
     available_subjects = query("SELECT id,subject_name,teacher_name FROM subjects WHERE active=1 AND class_name=%s ORDER BY subject_name", (klass,)) if klass else []
     if request.method == "POST":
-        if not klass or not subject_id:
-            flash("Attendance mark karne se pehle class aur subject select karo.", "error")
+        valid_section_values = {s["section"] or "__blank__" for s in sections}
+        if not klass or selected_section_value not in valid_section_values or not subject_id:
+            flash("Attendance se pehle class, section aur subject select karo.", "error")
             return redirect(url_for("attendance", attendance_date=selected, class_name=klass))
         valid_subject = query("SELECT id,subject_name FROM subjects WHERE id=%s AND class_name=%s AND active=1", (subject_id, klass), one=True)
         if not valid_subject:
             flash("Selected subject is class ke liye available nahi hai.", "error")
-            return redirect(url_for("attendance", attendance_date=selected, class_name=klass))
+            return redirect(url_for("attendance", attendance_date=selected, class_name=klass, section=selected_section_value))
         ids = request.form.getlist("student_id")
         allowed = {str(s["id"]): s for s in query("""SELECT id,roll_no,full_name,class_name,email,guardian_name,guardian_email
-          FROM students WHERE active=1 AND class_name=%s""", (klass,))}
+          FROM students WHERE active=1 AND class_name=%s AND COALESCE(section,'')=%s""", (klass, section))}
         changed_absences = []
         saved_count = 0
         conn = db()
@@ -573,25 +680,29 @@ def attendance():
             cur.close(); conn.close()
         attempts = []
         for student in changed_absences:
-                    attempts.extend(send_attendance_emails(student, selected, valid_subject["subject_name"],
-                                                 request.form.get(f"status_{student['id']}", "Absent")))
+            attempts.extend(send_attendance_emails(
+                student, selected, valid_subject["subject_name"],
+                request.form.get(f"status_{student['id']}", "Absent")))
         delivered = sum(1 for attempt in attempts if attempt["sent"])
         failed = sum(1 for attempt in attempts if not attempt["sent"])
         flash(f"{saved_count} students ki attendance save ho gayi.", "success")
         if delivered:
-            flash(f"{delivered} guardian notification(s) accepted for delivery.", "success")
+            flash(f"{delivered} email notification(s) accepted for delivery.", "success")
         if failed:
             flash(f"{failed} notification(s) fail hue. Notifications page par details dekho.", "warning")
-        return redirect(url_for("attendance", attendance_date=selected, class_name=klass, subject_id=subject_id))
-    if klass and subject_id:
+        return redirect(url_for("attendance", attendance_date=selected, class_name=klass,
+                                section=selected_section_value, subject_id=subject_id))
+    if klass and subject_id and selected_section_value not in ("", "__choose__"):
         sql = """SELECT s.id,s.roll_no,s.full_name,s.class_name,s.section,a.status
           FROM students s LEFT JOIN attendance a ON a.student_id=s.id AND a.attendance_date=%s AND a.subject_id=%s
-          WHERE s.active=1 AND s.class_name=%s ORDER BY s.section,s.roll_no"""
-        rows = query(sql, (selected, subject_id, klass))
+          WHERE s.active=1 AND s.class_name=%s AND COALESCE(s.section,'')=%s ORDER BY s.roll_no"""
+        rows = query(sql, (selected, subject_id, klass, section))
     else:
         rows = []
     return render_template("attendance.html", students=rows, classes=classes, subjects=available_subjects,
-                           selected=selected, selected_class=klass, selected_subject=subject_id)
+                           selected=selected, selected_class=klass, selected_section=section,
+                           selected_section_value=selected_section_value,
+                           selected_subject=subject_id, sections=sections)
 
 
 @app.get("/reports")

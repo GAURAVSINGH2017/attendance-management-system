@@ -1,0 +1,5 @@
+{% extends 'base.html' %}{% block heading %}Class created{% endblock %}{% block content %}
+<div class="welcome-row"><div><h2>Class {{ class_name }} · Section {{ section }} saved</h2><p class="muted">Student accounts were created. Share each student's login privately.</p></div></div>
+<div class="panel"><div class="table-scroll"><table><thead><tr><th>STUDENT</th><th>ROLL NO.</th><th>STUDENT USERNAME</th><th>INITIAL PASSWORD</th></tr></thead><tbody>{% for s in credentials %}<tr><td>{{ s.full_name }}</td><td>{{ s.roll_no }}</td><td>{{ s.username }}</td><td>{{ s.initial_password }}</td></tr>{% endfor %}</tbody></table></div><div class="table-footer">Students must change the initial password on first login. Keep these credentials private.</div></div>
+<div class="form-actions"><a class="button primary" href="{{ url_for('class_detail',class_name=class_name,section=section) }}">Open class details</a><a class="button secondary" href="{{ url_for('classes') }}">Back to classes</a></div>
+{% endblock %}
