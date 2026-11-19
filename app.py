@@ -2,6 +2,7 @@ import csv
 import io
 import json
 import os
+import re
 import smtplib
 import urllib.error
 import urllib.request
@@ -179,6 +180,11 @@ def student_name_key(full_name):
     normalized = unicodedata.normalize("NFKD", full_name).encode("ascii", "ignore").decode("ascii").lower()
     key = "".join(character for character in normalized if character.isalnum())
     return key or "student"
+
+
+def roll_sort_key(roll_no):
+    parts = re.split(r"(\d+)", str(roll_no or ""))
+    return tuple((0, int(part)) if part.isdigit() else (1, part.casefold()) for part in parts)
 
 
 def create_student_login(cur, student_id, full_name, dob):
@@ -529,6 +535,7 @@ def class_detail():
     rows = query("""SELECT s.id,s.roll_no,s.full_name,s.class_name,s.section,s.date_of_birth,s.email,
       u.username,u.must_change_password FROM students s LEFT JOIN users u ON u.student_id=s.id
       WHERE s.active=1 AND s.class_name=%s AND COALESCE(s.section,'')=%s ORDER BY s.roll_no""", (class_name, section))
+    rows.sort(key=lambda row: roll_sort_key(row["roll_no"]))
     for row in rows:
         row["initial_password"] = f"{student_name_key(row['full_name'])}@123" if row.get("must_change_password") else None
     return render_template("class_detail.html", class_name=class_name, section=section, students=rows)
@@ -697,6 +704,7 @@ def attendance():
           FROM students s LEFT JOIN attendance a ON a.student_id=s.id AND a.attendance_date=%s AND a.subject_id=%s
           WHERE s.active=1 AND s.class_name=%s AND COALESCE(s.section,'')=%s ORDER BY s.roll_no"""
         rows = query(sql, (selected, subject_id, klass, section))
+        rows.sort(key=lambda row: roll_sort_key(row["roll_no"]))
     else:
         rows = []
     return render_template("attendance.html", students=rows, classes=classes, subjects=available_subjects,
