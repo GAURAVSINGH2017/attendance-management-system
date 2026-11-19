@@ -276,7 +276,15 @@ def dashboard():
     recent = query("""SELECT a.attendance_date,s.roll_no,s.full_name,a.status
       FROM attendance a JOIN students s ON s.id=a.student_id
       ORDER BY a.attendance_date DESC,a.updated_at DESC LIMIT 8""")
-    return render_template("dashboard.html", counts=counts, student_count=student_count, recent=recent)
+    low_attendance = query("""SELECT s.roll_no,s.full_name,s.class_name,s.section,
+      SUM(a.status='Present') present,COUNT(a.id) marked,
+      ROUND(100*SUM(a.status='Present')/NULLIF(COUNT(a.id),0),1) percentage
+      FROM students s JOIN attendance a ON a.student_id=s.id
+      WHERE s.active=1 GROUP BY s.id
+      HAVING percentage < 75
+      ORDER BY percentage,s.class_name,s.section,s.roll_no""")
+    return render_template("dashboard.html", counts=counts, student_count=student_count,
+                           recent=recent, low_attendance=low_attendance)
 
 
 @app.get("/student/attendance")
