@@ -168,14 +168,22 @@ cur.execute("""SELECT COUNT(*) FROM information_schema.table_constraints
 if not cur.fetchone()[0]:
     cur.execute("ALTER TABLE attendance ADD CONSTRAINT fk_attendance_subject FOREIGN KEY (subject_id) REFERENCES subjects(id)")
 
-# Optional first-run admin bootstrap for a hosted deployment.
+# Optional teacher-account bootstrap/reset for a hosted deployment. Remove these
+# variables from the host after one successful deploy so later restarts do not
+# keep resetting the password.
 bootstrap_username = os.getenv("BOOTSTRAP_ADMIN_USERNAME", "").strip()
 bootstrap_password = os.getenv("BOOTSTRAP_ADMIN_PASSWORD", "")
 if bootstrap_username and len(bootstrap_password) >= 8:
-    cur.execute("SELECT id FROM users WHERE username=%s", (bootstrap_username,))
-    if not cur.fetchone():
+    cur.execute("SELECT id,role FROM users WHERE username=%s", (bootstrap_username,))
+    existing_admin = cur.fetchone()
+    if not existing_admin:
         cur.execute("INSERT INTO users(username,password_hash) VALUES(%s,%s)",
                     (bootstrap_username, generate_password_hash(bootstrap_password)))
+    elif existing_admin[1] == "teacher":
+        cur.execute("UPDATE users SET password_hash=%s WHERE id=%s",
+                    (generate_password_hash(bootstrap_password), existing_admin[0]))
+    else:
+        print("Bootstrap password skipped: that username belongs to a student account.")
 
 conn.commit()
 cur.close()
