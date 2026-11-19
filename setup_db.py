@@ -129,6 +129,22 @@ cur.execute("""CREATE TABLE IF NOT EXISTS attendance (
   FOREIGN KEY (marked_by) REFERENCES users(id)
 )""")
 
+cur.execute("""CREATE TABLE IF NOT EXISTS attendance_audit_log (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  student_id INT NOT NULL,
+  subject_id INT NOT NULL,
+  attendance_date DATE NOT NULL,
+  previous_status ENUM('Present','Absent','Late') DEFAULT NULL,
+  new_status ENUM('Present','Absent','Late') NOT NULL,
+  changed_by INT NOT NULL,
+  changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_attendance_audit_changed_at (changed_at),
+  INDEX idx_attendance_audit_student_date (student_id,attendance_date),
+  FOREIGN KEY (student_id) REFERENCES students(id),
+  FOREIGN KEY (subject_id) REFERENCES subjects(id),
+  FOREIGN KEY (changed_by) REFERENCES users(id)
+)""")
+
 for column_name, column_type in (("guardian_name", "VARCHAR(120) NULL"),
                                  ("guardian_email", "VARCHAR(120) NULL"),
                                  ("guardian_phone", "VARCHAR(30) NULL")):

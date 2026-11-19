@@ -823,6 +823,12 @@ def attendance():
                     cur.execute("""INSERT INTO attendance(student_id,subject_id,attendance_date,status,marked_by) VALUES(%s,%s,%s,%s,%s)
                       ON DUPLICATE KEY UPDATE status=VALUES(status),marked_by=VALUES(marked_by),updated_at=CURRENT_TIMESTAMP""",
                       (int(sid), int(subject_id), selected, status, session["user_id"]))
+                    if not previous or previous[0] != status:
+                        cur.execute("""INSERT INTO attendance_audit_log
+                          (student_id,subject_id,attendance_date,previous_status,new_status,changed_by)
+                          VALUES(%s,%s,%s,%s,%s,%s)""",
+                          (int(sid), int(subject_id), selected, previous[0] if previous else None,
+                           status, session["user_id"]))
                     saved_count += 1
                     if status in ("Absent", "Late") and (not previous or previous[0] != status):
                         changed_absences.append(allowed[sid])
@@ -855,6 +861,19 @@ def attendance():
                            selected=selected, selected_class=klass, selected_section=section,
                            selected_section_value=selected_section_value,
                            selected_subject=subject_id, sections=sections)
+
+
+@app.get("/attendance/history")
+@login_required
+def attendance_history():
+    rows = query("""SELECT h.attendance_date,h.previous_status,h.new_status,h.changed_at,
+      s.roll_no,s.full_name,s.class_name,s.section,sub.subject_name,u.username changed_by
+      FROM attendance_audit_log h
+      JOIN students s ON s.id=h.student_id
+      JOIN subjects sub ON sub.id=h.subject_id
+      JOIN users u ON u.id=h.changed_by
+      ORDER BY h.changed_at DESC,h.id DESC LIMIT 200""")
+    return render_template("attendance_history.html", history=rows)
 
 
 @app.get("/reports")

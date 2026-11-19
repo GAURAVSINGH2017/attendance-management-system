@@ -1,0 +1,10 @@
+{% extends 'base.html' %}
+{% block title %}Attendance change history{% endblock %}
+{% block heading %}Attendance history{% endblock %}
+{% block content %}
+<div class="welcome-row"><div><h2>Attendance change history</h2><p class="muted">Recent 200 attendance markings and status changes. Re-saving the same status is not logged.</p></div><a class="button secondary" href="{{ url_for('attendance') }}">← Mark attendance</a></div>
+<div class="panel"><div class="table-scroll"><table><thead><tr><th>CHANGED AT</th><th>STUDENT</th><th>CLASS / SECTION</th><th>DATE</th><th>SUBJECT</th><th>PREVIOUS</th><th>NEW STATUS</th><th>CHANGED BY</th></tr></thead><tbody>
+{% for event in history %}<tr><td>{{ event.changed_at }}</td><td>{{ event.roll_no }} · {{ event.full_name }}</td><td>{{ event.class_name }} · {{ event.section or 'General' }}</td><td>{{ event.attendance_date }}</td><td>{{ event.subject_name }}</td><td>{{ event.previous_status or 'Not marked' }}</td><td><span class="badge {{ event.new_status|lower }}">{{ event.new_status }}</span></td><td>{{ event.changed_by }}</td></tr>
+{% else %}<tr><td colspan="8" class="empty-row">No attendance changes have been recorded yet. New markings and changes will appear here.</td></tr>{% endfor %}
+</tbody></table></div><div class="table-footer">{{ history|length }} recent change events · Existing attendance remains unchanged</div></div>
+{% endblock %}
