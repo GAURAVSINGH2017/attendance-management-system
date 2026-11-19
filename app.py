@@ -283,8 +283,22 @@ def dashboard():
       WHERE s.active=1 GROUP BY s.id
       HAVING percentage < 75
       ORDER BY percentage,s.class_name,s.section,s.roll_no""")
+    today_date = date.today()
+    today_periods = query("""SELECT t.class_name,t.section,t.period_type,t.lecture_number,
+      t.subject_name,t.start_time,t.end_time,t.room,s.id subject_id,
+      COALESCE(th.full_name,s.teacher_name) teacher_name
+      FROM class_timetable t LEFT JOIN subjects s
+        ON s.class_name=t.class_name AND s.subject_name=t.subject_name AND s.active=1
+      LEFT JOIN teachers th ON th.id=s.teacher_id
+      WHERE t.weekday=%s
+      ORDER BY t.start_time,t.class_name,t.section""", (today_date.strftime("%A"),))
+    for period in today_periods:
+        period["start_label"] = format_clock(period["start_time"])
+        period["end_label"] = format_clock(period["end_time"])
     return render_template("dashboard.html", counts=counts, student_count=student_count,
-                           recent=recent, low_attendance=low_attendance)
+                           recent=recent, low_attendance=low_attendance,
+                           today_periods=today_periods, today_date=today_date.isoformat(),
+                           today_weekday=today_date.strftime("%A"))
 
 
 @app.get("/student/attendance")
