@@ -308,6 +308,31 @@ def student_change_password():
     return render_template("student_change_password.html")
 
 
+@app.route("/teacher/change-password", methods=["GET", "POST"])
+@login_required
+def teacher_change_password():
+    if session.get("user_role", "teacher") != "teacher":
+        return redirect(url_for("student_attendance"))
+    if request.method == "POST":
+        current_password = request.form.get("current_password", "")
+        new_password = request.form.get("password", "")
+        confirm = request.form.get("confirm_password", "")
+        user = query("SELECT password_hash FROM users WHERE id=%s AND role='teacher'",
+                     (session["user_id"],), one=True)
+        if not user or not check_password_hash(user["password_hash"], current_password):
+            flash("Current password sahi nahi hai.", "error")
+        elif len(new_password) < 8:
+            flash("Naya password kam se kam 8 characters ka hona chahiye.", "error")
+        elif new_password != confirm:
+            flash("Dono new password match nahi karte.", "error")
+        else:
+            query("UPDATE users SET password_hash=%s WHERE id=%s AND role='teacher'",
+                  (generate_password_hash(new_password), session["user_id"]), write=True)
+            flash("Teacher password update ho gaya.", "success")
+            return redirect(url_for("dashboard"))
+    return render_template("teacher_change_password.html")
+
+
 @app.route("/students", methods=["GET", "POST"])
 @login_required
 def students():
