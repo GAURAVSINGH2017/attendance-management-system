@@ -71,6 +71,7 @@ cur.execute("""CREATE TABLE IF NOT EXISTS class_timetable (
   section VARCHAR(20) NOT NULL DEFAULT '',
   weekday ENUM('Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday') NOT NULL,
   period_type ENUM('lecture','lunch') NOT NULL DEFAULT 'lecture',
+  lecture_number INT DEFAULT NULL,
   subject_name VARCHAR(80) DEFAULT NULL,
   start_time TIME NOT NULL,
   end_time TIME NOT NULL,
@@ -78,6 +79,23 @@ cur.execute("""CREATE TABLE IF NOT EXISTS class_timetable (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY unique_class_period (class_name,section,weekday,start_time)
 )""")
+cur.execute("SHOW COLUMNS FROM class_timetable LIKE 'lecture_number'")
+if not cur.fetchone():
+    cur.execute("ALTER TABLE class_timetable ADD COLUMN lecture_number INT NULL AFTER period_type")
+cur.execute("""SELECT id,class_name,section,weekday,start_time FROM class_timetable
+  WHERE period_type='lecture' AND lecture_number IS NULL
+  ORDER BY class_name,section,weekday,start_time""")
+lecture_rows = cur.fetchall()
+lecture_counters = {}
+for row_id, class_name, section, weekday, _start_time in lecture_rows:
+    key = (class_name, section, weekday)
+    lecture_counters[key] = lecture_counters.get(key, 0) + 1
+    cur.execute("UPDATE class_timetable SET lecture_number=%s WHERE id=%s",
+                (lecture_counters[key], row_id))
+cur.execute("""SELECT COUNT(*) FROM information_schema.statistics
+  WHERE table_schema=%s AND table_name='class_timetable' AND index_name='unique_class_lecture_number'""", (db_name,))
+if not cur.fetchone()[0]:
+    cur.execute("ALTER TABLE class_timetable ADD UNIQUE KEY unique_class_lecture_number (class_name,section,weekday,lecture_number)")
 
 # Add role-based accounts to older databases without changing existing teacher logins.
 for column_name, column_type in (("role", "VARCHAR(20) NOT NULL DEFAULT 'teacher'"),

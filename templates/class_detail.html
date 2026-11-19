@@ -18,7 +18,7 @@
       <tr>
         <td>{{ period.weekday }}</td>
         <td>{{ period.start_label }}–{{ period.end_label }}</td>
-        <td>{% if period.period_type == 'lunch' %}<b>Lunch break</b>{% else %}{{ period.subject_name }}{% endif %}</td>
+        <td>{% if period.period_type == 'lunch' %}<b>Lunch break</b>{% else %}<b>Lecture {{ period.lecture_number }}</b> · {{ period.subject_name }}{% endif %}</td>
         <td>{{ period.teacher_name or '—' }}</td><td>{{ period.room or '—' }}</td>
         <td><form method="post" action="{{ url_for('delete_timetable_period',period_id=period.id) }}" data-confirm="Delete this timetable period?"><input type="hidden" name="class_name" value="{{ class_name }}"><input type="hidden" name="section" value="{{ section }}"><button class="icon-button danger-text">Delete</button></form></td>
       </tr>
@@ -36,6 +36,7 @@
     <input type="hidden" name="class_name" value="{{ class_name }}"><input type="hidden" name="section" value="{{ section }}">
     <label>Day *<select name="weekday" required><option value="">Choose day</option>{% for day in ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'] %}<option value="{{ day }}">{{ day }}</option>{% endfor %}</select></label>
     <label>Period type *<select name="period_type" id="period-type"><option value="lecture">Lecture</option><option value="lunch">Lunch break</option></select></label>
+    <label id="lecture-number-field">Lecture number *<input type="number" name="lecture_number" id="lecture-number" min="1" max="20" step="1" placeholder="e.g. 1"></label>
     <label id="subject-field">Subject *<select name="subject_name" id="subject-name"><option value="">Choose subject</option>{% for subject in subjects %}<option value="{{ subject.subject_name }}">{{ subject.subject_name }}{% if subject.teacher_name %} · {{ subject.teacher_name }}{% endif %}</option>{% endfor %}</select></label>
     <label>Start time *<input type="time" name="start_time" required></label>
     <label>End time *<input type="time" name="end_time" required></label>
@@ -59,11 +60,15 @@ document.addEventListener('DOMContentLoaded', function () {
   const type = document.getElementById('period-type');
   const subject = document.getElementById('subject-name');
   const field = document.getElementById('subject-field');
-  if (!type || !subject || !field) return;
+  const number = document.getElementById('lecture-number');
+  const numberField = document.getElementById('lecture-number-field');
+  if (!type || !subject || !field || !number || !numberField) return;
   function syncSubject() {
     const isLecture = type.value === 'lecture';
     field.hidden = !isLecture;
     subject.required = isLecture;
+    numberField.hidden = !isLecture;
+    number.required = isLecture;
   }
   type.addEventListener('change', syncSubject);
   syncSubject();

@@ -299,7 +299,7 @@ def student_attendance():
       COALESCE(SUM(status='Late'),0) late,
       ROUND(100*COALESCE(SUM(status='Present'),0)/NULLIF(COUNT(*),0),1) percentage
       FROM attendance WHERE student_id=%s""", (student["id"],), one=True)
-    timetable = query("""SELECT t.weekday,t.period_type,t.subject_name,t.start_time,t.end_time,t.room,
+    timetable = query("""SELECT t.weekday,t.period_type,t.lecture_number,t.subject_name,t.start_time,t.end_time,t.room,
         COALESCE(th.full_name,s.teacher_name) teacher_name
       FROM class_timetable t LEFT JOIN subjects s
         ON s.class_name=t.class_name AND s.subject_name=t.subject_name AND s.active=1
@@ -562,7 +562,7 @@ def class_detail():
     subjects = query("""SELECT s.subject_name,COALESCE(t.full_name,s.teacher_name) teacher_name
       FROM subjects s LEFT JOIN teachers t ON t.id=s.teacher_id
       WHERE s.class_name=%s AND s.active=1 ORDER BY s.subject_name""", (class_name,))
-    timetable = query("""SELECT t.id,t.weekday,t.period_type,t.subject_name,t.start_time,t.end_time,t.room,
+    timetable = query("""SELECT t.id,t.weekday,t.period_type,t.lecture_number,t.subject_name,t.start_time,t.end_time,t.room,
         COALESCE(th.full_name,s.teacher_name) teacher_name
       FROM class_timetable t LEFT JOIN subjects s
         ON s.class_name=t.class_name AND s.subject_name=t.subject_name AND s.active=1
@@ -615,6 +615,7 @@ def add_timetable_period():
     weekday = request.form.get("weekday", "").strip()
     period_type = request.form.get("period_type", "lecture").strip()
     subject_name = request.form.get("subject_name", "").strip() or None
+    lecture_number_text = request.form.get("lecture_number", "").strip()
     start_text = request.form.get("start_time", "").strip()
     end_text = request.form.get("end_time", "").strip()
     room = request.form.get("room", "").strip() or None
@@ -626,9 +627,14 @@ def add_timetable_period():
         start_time = end_time = None
     subject = query("SELECT id FROM subjects WHERE class_name=%s AND subject_name=%s AND active=1",
                     (class_name, subject_name), one=True) if class_name and subject_name else None
-    valid_period = period_type == "lunch" or (period_type == "lecture" and subject)
+    try:
+        lecture_number = int(lecture_number_text) if lecture_number_text else None
+    except ValueError:
+        lecture_number = None
+    valid_period = (period_type == "lunch" or
+                    (period_type == "lecture" and subject and lecture_number is not None and 1 <= lecture_number <= 20))
     if not class_name or weekday not in days or not valid_period or not start_time or not end_time:
-        flash("Class, day, subject (lecture ke liye) aur valid times select karo.", "error")
+        flash("Class, day, valid times aur lecture ke liye subject + lecture number (1–20) select karo.", "error")
     elif start_time >= end_time:
         flash("End time start time ke baad hona chahiye.", "error")
     else:
@@ -639,9 +645,10 @@ def add_timetable_period():
             flash("Is time par isi class-section ka doosra lecture pehle se scheduled hai.", "error")
         else:
             try:
-                query("""INSERT INTO class_timetable(class_name,section,weekday,period_type,subject_name,start_time,end_time,room)
-                  VALUES(%s,%s,%s,%s,%s,%s,%s,%s)""",
-                  (class_name, section, weekday, period_type, subject_name if period_type == "lecture" else None,
+                query("""INSERT INTO class_timetable(class_name,section,weekday,period_type,lecture_number,subject_name,start_time,end_time,room)
+                  VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                  (class_name, section, weekday, period_type, lecture_number if period_type == "lecture" else None,
+                   subject_name if period_type == "lecture" else None,
                    start_time, end_time, room), write=True)
                 flash("Lunch break timetable mein add ho gaya." if period_type == "lunch" else "Lecture timetable mein add ho gaya.", "success")
             except mysql.connector.IntegrityError:
