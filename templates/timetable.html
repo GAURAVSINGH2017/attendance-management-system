@@ -1,0 +1,4 @@
+{% extends 'base.html' %}{% block heading %}Timetable{% endblock %}{% block content %}
+<div class="welcome-row"><div><h2>Class-section timetables</h2><p class="muted">Choose a class and section to create or update its weekly timetable.</p></div></div>
+<div class="panel"><div class="table-scroll"><table><thead><tr><th>CLASS</th><th>SECTION</th><th>STUDENTS</th><th>PERIODS</th><th>ACTION</th></tr></thead><tbody>{% for c in classes %}<tr><td>{{ c.class_name }}</td><td>{{ c.section or 'General' }}</td><td>{{ c.student_count }}</td><td>{{ c.period_count }}</td><td><a class="text-link" href="{{ url_for('class_detail',class_name=c.class_name,section=c.section) }}#weekly-timetable">Create / edit timetable →</a></td></tr>{% else %}<tr><td colspan="5" class="empty-row">Add class sections and students first.</td></tr>{% endfor %}</tbody></table></div></div>
+{% endblock %}

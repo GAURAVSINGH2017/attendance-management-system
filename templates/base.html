@@ -14,6 +14,8 @@
   <nav id="main-navigation">{% if current_role=='student' %}<a class="nav-link {{ 'active' if request.endpoint=='student_attendance' else '' }}" href="{{ url_for('student_attendance') }}"><span>▤</span> My attendance</a>{% else %}<a class="nav-link {{ 'active' if request.endpoint=='dashboard' else '' }}" href="{{ url_for('dashboard') }}"><span>▦</span> Overview</a>
     <a class="nav-link {{ 'active' if request.endpoint in ['students','edit_student'] else '' }}" href="{{ url_for('students') }}"><span>♙</span> Students</a>
     <a class="nav-link {{ 'active' if request.endpoint in ['classes','bulk_add_students','class_detail'] else '' }}" href="{{ url_for('classes') }}"><span>▦</span> Classes</a>
+    <a class="nav-link {{ 'active' if request.endpoint=='teachers' else '' }}" href="{{ url_for('teachers') }}"><span>♙</span> Teachers</a>
+    <a class="nav-link {{ 'active' if request.endpoint in ['timetable','class_detail'] else '' }}" href="{{ url_for('timetable') }}"><span>◷</span> Timetable</a>
     <a class="nav-link {{ 'active' if request.endpoint in ['subjects','archive_subject'] else '' }}" href="{{ url_for('subjects') }}"><span>▣</span> Subjects</a>
     <a class="nav-link {{ 'active' if request.endpoint=='attendance' else '' }}" href="{{ url_for('attendance') }}"><span>✓</span> Mark attendance</a>
     <a class="nav-link {{ 'active' if request.endpoint in ['reports','export_report'] else '' }}" href="{{ url_for('reports') }}"><span>▤</span> Reports</a>

@@ -1,0 +1,5 @@
+{% extends 'base.html' %}{% block heading %}Teachers{% endblock %}{% block content %}
+<div class="welcome-row"><div><h2>Teachers directory</h2><p class="muted">Add teachers here, then assign them to subjects.</p></div></div>
+<div class="panel edit-panel"><h3>Add a teacher</h3><form method="post" class="form-grid"><label>Teacher full name *<input name="full_name" maxlength="120" required></label><label>Email (optional)<input type="email" name="email" maxlength="120"></label><div class="form-actions wide"><button class="button primary">Add teacher</button></div></form></div>
+<div class="panel"><div class="panel-head"><div><h3>Teachers</h3><p class="muted">Assign a teacher to subjects from the Subjects page.</p></div></div><div class="table-scroll"><table><thead><tr><th>TEACHER</th><th>EMAIL</th></tr></thead><tbody>{% for teacher in teachers %}<tr><td>{{ teacher.full_name }}</td><td>{{ teacher.email or '—' }}</td></tr>{% else %}<tr><td colspan="2" class="empty-row">No teachers added yet.</td></tr>{% endfor %}</tbody></table></div></div>
+{% endblock %}

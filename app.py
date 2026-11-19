@@ -7,7 +7,7 @@ import smtplib
 import urllib.error
 import urllib.request
 import unicodedata
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from email.message import EmailMessage
 from functools import wraps
 import mysql.connector
@@ -187,6 +187,15 @@ def roll_sort_key(roll_no):
     return tuple((0, int(part)) if part.isdigit() else (1, part.casefold()) for part in parts)
 
 
+def format_clock(value):
+    if hasattr(value, "strftime"):
+        return value.strftime("%H:%M")
+    if isinstance(value, timedelta):
+        total_minutes = int(value.total_seconds() // 60)
+        return f"{total_minutes // 60:02d}:{total_minutes % 60:02d}"
+    return str(value or "")[:5]
+
+
 def create_student_login(cur, student_id, full_name, dob):
     name_key = student_name_key(full_name)
     suffix = dob.strftime("%d%m%y")
@@ -290,7 +299,19 @@ def student_attendance():
       COALESCE(SUM(status='Late'),0) late,
       ROUND(100*COALESCE(SUM(status='Present'),0)/NULLIF(COUNT(*),0),1) percentage
       FROM attendance WHERE student_id=%s""", (student["id"],), one=True)
-    return render_template("student_attendance.html", student=student, rows=rows, counts=counts)
+    timetable = query("""SELECT t.weekday,t.period_type,t.subject_name,t.start_time,t.end_time,t.room,
+        COALESCE(th.full_name,s.teacher_name) teacher_name
+      FROM class_timetable t LEFT JOIN subjects s
+        ON s.class_name=t.class_name AND s.subject_name=t.subject_name AND s.active=1
+      LEFT JOIN teachers th ON th.id=s.teacher_id
+      WHERE t.class_name=%s AND t.section=%s
+      ORDER BY FIELD(t.weekday,'Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'),t.start_time""",
+      (student["class_name"], student["section"] or ""))
+    for period in timetable:
+        period["start_label"] = format_clock(period["start_time"])
+        period["end_label"] = format_clock(period["end_time"])
+    return render_template("student_attendance.html", student=student, rows=rows, counts=counts,
+                           timetable=timetable)
 
 
 @app.route("/student/change-password", methods=["GET", "POST"])
@@ -538,7 +559,105 @@ def class_detail():
     rows.sort(key=lambda row: roll_sort_key(row["roll_no"]))
     for row in rows:
         row["initial_password"] = f"{student_name_key(row['full_name'])}@123" if row.get("must_change_password") else None
-    return render_template("class_detail.html", class_name=class_name, section=section, students=rows)
+    subjects = query("""SELECT s.subject_name,COALESCE(t.full_name,s.teacher_name) teacher_name
+      FROM subjects s LEFT JOIN teachers t ON t.id=s.teacher_id
+      WHERE s.class_name=%s AND s.active=1 ORDER BY s.subject_name""", (class_name,))
+    timetable = query("""SELECT t.id,t.weekday,t.period_type,t.subject_name,t.start_time,t.end_time,t.room,
+        COALESCE(th.full_name,s.teacher_name) teacher_name
+      FROM class_timetable t LEFT JOIN subjects s
+        ON s.class_name=t.class_name AND s.subject_name=t.subject_name AND s.active=1
+      LEFT JOIN teachers th ON th.id=s.teacher_id
+      WHERE t.class_name=%s AND t.section=%s
+      ORDER BY FIELD(t.weekday,'Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'),t.start_time""",
+      (class_name, section))
+    for period in timetable:
+        period["start_label"] = format_clock(period["start_time"])
+        period["end_label"] = format_clock(period["end_time"])
+    return render_template("class_detail.html", class_name=class_name, section=section,
+                           students=rows, subjects=subjects, timetable=timetable)
+
+
+@app.route("/teachers", methods=["GET", "POST"])
+@login_required
+def teachers():
+    if request.method == "POST":
+        full_name = request.form.get("full_name", "").strip()
+        email = request.form.get("email", "").strip() or None
+        if not full_name:
+            flash("Teacher ka naam zaroori hai.", "error")
+        else:
+            try:
+                query("INSERT INTO teachers(full_name,email) VALUES(%s,%s)",
+                      (full_name, email), write=True)
+                flash("Teacher add ho gaya. Ab Subjects section mein unke subjects assign karo.", "success")
+                return redirect(url_for("teachers"))
+            except mysql.connector.IntegrityError:
+                flash("Is naam ka teacher pehle se maujood hai.", "error")
+    rows = query("SELECT id,full_name,email FROM teachers WHERE active=1 ORDER BY full_name")
+    return render_template("teachers.html", teachers=rows)
+
+
+@app.get("/timetable")
+@login_required
+def timetable():
+    groups = query("""SELECT s.class_name,COALESCE(s.section,'') section,COUNT(DISTINCT s.id) student_count,
+      COUNT(t.id) period_count FROM students s LEFT JOIN class_timetable t
+      ON t.class_name=s.class_name AND t.section=COALESCE(s.section,'')
+      WHERE s.active=1 GROUP BY s.class_name,COALESCE(s.section,'') ORDER BY s.class_name,section""")
+    return render_template("timetable.html", classes=groups)
+
+
+@app.post("/classes/timetable/add")
+@login_required
+def add_timetable_period():
+    class_name = request.form.get("class_name", "").strip()
+    section = request.form.get("section", "").strip()
+    weekday = request.form.get("weekday", "").strip()
+    period_type = request.form.get("period_type", "lecture").strip()
+    subject_name = request.form.get("subject_name", "").strip() or None
+    start_text = request.form.get("start_time", "").strip()
+    end_text = request.form.get("end_time", "").strip()
+    room = request.form.get("room", "").strip() or None
+    days = {"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"}
+    try:
+        start_time = datetime.strptime(start_text, "%H:%M").time()
+        end_time = datetime.strptime(end_text, "%H:%M").time()
+    except ValueError:
+        start_time = end_time = None
+    subject = query("SELECT id FROM subjects WHERE class_name=%s AND subject_name=%s AND active=1",
+                    (class_name, subject_name), one=True) if class_name and subject_name else None
+    valid_period = period_type == "lunch" or (period_type == "lecture" and subject)
+    if not class_name or weekday not in days or not valid_period or not start_time or not end_time:
+        flash("Class, day, subject (lecture ke liye) aur valid times select karo.", "error")
+    elif start_time >= end_time:
+        flash("End time start time ke baad hona chahiye.", "error")
+    else:
+        overlap = query("""SELECT id FROM class_timetable
+          WHERE class_name=%s AND section=%s AND weekday=%s AND start_time < %s AND end_time > %s LIMIT 1""",
+          (class_name, section, weekday, end_time, start_time), one=True)
+        if overlap:
+            flash("Is time par isi class-section ka doosra lecture pehle se scheduled hai.", "error")
+        else:
+            try:
+                query("""INSERT INTO class_timetable(class_name,section,weekday,period_type,subject_name,start_time,end_time,room)
+                  VALUES(%s,%s,%s,%s,%s,%s,%s,%s)""",
+                  (class_name, section, weekday, period_type, subject_name if period_type == "lecture" else None,
+                   start_time, end_time, room), write=True)
+                flash("Lunch break timetable mein add ho gaya." if period_type == "lunch" else "Lecture timetable mein add ho gaya.", "success")
+            except mysql.connector.IntegrityError:
+                flash("Is time ka period pehle se maujood hai.", "error")
+    return redirect(url_for("class_detail", class_name=class_name, section=section))
+
+
+@app.post("/classes/timetable/<int:period_id>/delete")
+@login_required
+def delete_timetable_period(period_id):
+    class_name = request.form.get("class_name", "").strip()
+    section = request.form.get("section", "").strip()
+    query("DELETE FROM class_timetable WHERE id=%s AND class_name=%s AND section=%s",
+          (period_id, class_name, section), write=True)
+    flash("Timetable period delete ho gaya.", "success")
+    return redirect(url_for("class_detail", class_name=class_name, section=section))
 
 
 @app.route("/subjects", methods=["GET", "POST"])
@@ -547,25 +666,33 @@ def subjects():
     if request.method == "POST":
         klass = request.form.get("class_name", "").strip()
         name = request.form.get("subject_name", "").strip()
-        teacher = request.form.get("teacher_name", "").strip() or None
-        if not klass or not name:
-            flash("Class aur subject name zaroori hain.", "error")
+        try:
+            teacher_id = int(request.form.get("teacher_id", "0"))
+        except ValueError:
+            teacher_id = 0
+        teacher = query("SELECT id,full_name FROM teachers WHERE id=%s AND active=1", (teacher_id,), one=True) if teacher_id else None
+        if not klass or not name or not teacher:
+            flash("Class, subject aur assigned teacher select karo.", "error")
         else:
             existing = query("SELECT id,active FROM subjects WHERE class_name=%s AND subject_name=%s", (klass, name), one=True)
             if existing and existing["active"]:
                 flash("Yeh subject is class mein pehle se hai.", "error")
             elif existing:
-                query("UPDATE subjects SET active=1,teacher_name=%s WHERE id=%s", (teacher, existing["id"]), write=True)
+                query("UPDATE subjects SET active=1,teacher_id=%s,teacher_name=%s WHERE id=%s",
+                      (teacher["id"], teacher["full_name"], existing["id"]), write=True)
                 flash("Archived subject dobara active ho gaya.", "success")
                 return redirect(url_for("subjects"))
             else:
-                query("INSERT INTO subjects(class_name,subject_name,teacher_name) VALUES(%s,%s,%s)",
-                      (klass, name, teacher), write=True)
+                query("INSERT INTO subjects(class_name,subject_name,teacher_id,teacher_name) VALUES(%s,%s,%s,%s)",
+                      (klass, name, teacher["id"], teacher["full_name"]), write=True)
                 flash("Subject add ho gaya.", "success")
                 return redirect(url_for("subjects"))
-    rows = query("SELECT * FROM subjects WHERE active=1 ORDER BY class_name,subject_name")
+    rows = query("""SELECT s.*,COALESCE(t.full_name,s.teacher_name) assigned_teacher
+      FROM subjects s LEFT JOIN teachers t ON t.id=s.teacher_id
+      WHERE s.active=1 ORDER BY s.class_name,s.subject_name""")
     classes = query("SELECT DISTINCT class_name FROM students WHERE active=1 ORDER BY class_name")
-    return render_template("subjects.html", subjects=rows, classes=classes)
+    teachers_list = query("SELECT id,full_name FROM teachers WHERE active=1 ORDER BY full_name")
+    return render_template("subjects.html", subjects=rows, classes=classes, teachers=teachers_list)
 
 
 @app.post("/subjects/<int:subject_id>/archive")
@@ -585,7 +712,9 @@ def api_classes():
 @app.get("/api/classes/<class_name>/subjects")
 @login_required
 def api_class_subjects(class_name):
-    return jsonify(query("SELECT id,subject_name,teacher_name FROM subjects WHERE active=1 AND class_name=%s ORDER BY subject_name", (class_name,)))
+    return jsonify(query("""SELECT s.id,s.subject_name,COALESCE(t.full_name,s.teacher_name) teacher_name
+      FROM subjects s LEFT JOIN teachers t ON t.id=s.teacher_id
+      WHERE s.active=1 AND s.class_name=%s ORDER BY s.subject_name""", (class_name,)))
 
 
 @app.get("/api/classes/<class_name>/sections")

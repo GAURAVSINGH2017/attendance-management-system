@@ -41,14 +41,42 @@ cur.execute("""CREATE TABLE IF NOT EXISTS students (
   active TINYINT(1) NOT NULL DEFAULT 1,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )""")
+cur.execute("""CREATE TABLE IF NOT EXISTS teachers (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  full_name VARCHAR(120) NOT NULL UNIQUE,
+  email VARCHAR(120) DEFAULT NULL,
+  active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)""")
 cur.execute("""CREATE TABLE IF NOT EXISTS subjects (
   id INT AUTO_INCREMENT PRIMARY KEY,
   class_name VARCHAR(50) NOT NULL,
   subject_name VARCHAR(80) NOT NULL,
+  teacher_id INT NULL,
   teacher_name VARCHAR(120) DEFAULT NULL,
   active TINYINT(1) NOT NULL DEFAULT 1,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY unique_class_subject (class_name, subject_name)
+)""")
+cur.execute("SHOW COLUMNS FROM subjects LIKE 'teacher_id'")
+if not cur.fetchone():
+    cur.execute("ALTER TABLE subjects ADD COLUMN teacher_id INT NULL AFTER subject_name")
+cur.execute("""SELECT COUNT(*) FROM information_schema.table_constraints
+  WHERE constraint_schema=%s AND table_name='subjects' AND constraint_name='fk_subject_teacher'""", (db_name,))
+if not cur.fetchone()[0]:
+    cur.execute("ALTER TABLE subjects ADD CONSTRAINT fk_subject_teacher FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE SET NULL")
+cur.execute("""CREATE TABLE IF NOT EXISTS class_timetable (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  class_name VARCHAR(50) NOT NULL,
+  section VARCHAR(20) NOT NULL DEFAULT '',
+  weekday ENUM('Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday') NOT NULL,
+  period_type ENUM('lecture','lunch') NOT NULL DEFAULT 'lecture',
+  subject_name VARCHAR(80) DEFAULT NULL,
+  start_time TIME NOT NULL,
+  end_time TIME NOT NULL,
+  room VARCHAR(40) DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY unique_class_period (class_name,section,weekday,start_time)
 )""")
 
 # Add role-based accounts to older databases without changing existing teacher logins.
