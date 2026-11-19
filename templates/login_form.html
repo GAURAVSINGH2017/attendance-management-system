@@ -1,4 +1,32 @@
-{% extends 'base.html' %}{% block title %}{{ 'Teacher' if login_role=='teacher' else 'Student' }} sign in{% endblock %}{% block content %}
-<div class="login-wrap"><div class="login-card"><a class="brand login-brand" href="{{ url_for('login') }}"><span class="brand-icon">A</span><span>Attend<span class="brand-light">Ease</span></span></a><div class="eyebrow">{{ 'TEACHER' if login_role=='teacher' else 'STUDENT' }} SIGN IN</div><h1>{{ 'Teacher login' if login_role=='teacher' else 'Student login' }}</h1><p class="muted">{{ 'Sign in to manage classes and attendance.' if login_role=='teacher' else 'Sign in to view your own attendance records.' }}</p>
-<form method="post" class="form-stack"><label>Username<input name="username" required autocomplete="username" placeholder="Your username"></label><label>Password<input type="password" name="password" required autocomplete="current-password" placeholder="Your password"></label><button class="button primary full" type="submit">Sign in <span>→</span></button></form><div class="login-foot"><a class="text-link" href="{{ url_for('login') }}">← Choose account type</a></div></div><div class="login-art"><div class="art-orbit orbit-one"></div><div class="art-orbit orbit-two"></div><div class="art-card"><div class="art-check">✓</div><span>Private attendance</span><strong>{{ 'Teacher' if login_role=='teacher' else 'Student' }}</strong><small>{{ 'Full system access' if login_role=='teacher' else 'Your records only' }}</small></div><div class="art-caption">A clearer view<br>of every school day.</div></div></div>
+{% extends 'base.html' %}
+{% block title %}{{ 'Teacher' if login_role=='teacher' else 'Student' }} sign in{% endblock %}
+{% block content %}
+<div class="login-wrap signin-wrap">
+  <section class="login-card signin-card">
+    <a class="brand login-brand" href="{{ url_for('login') }}"><span class="brand-icon">A</span><span>Attend<span class="brand-light">Ease</span></span></a>
+    <div class="login-eyebrow"><span class="live-dot"></span> SECURE {{ 'TEACHER' if login_role=='teacher' else 'STUDENT' }} SIGN IN</div>
+    <h1>Welcome back,<br><span>{{ 'Teacher' if login_role=='teacher' else 'Student' }}.</span></h1>
+    <p class="login-lead">{{ 'Sign in to manage classes, attendance and reports.' if login_role=='teacher' else 'Sign in to see your attendance and class timetable.' }}</p>
+    <form method="post" class="form-stack signin-form">
+      <label>Username<input name="username" required autocomplete="username" placeholder="Enter your username"></label>
+      <label>Password<input type="password" name="password" required autocomplete="current-password" placeholder="Enter your password"></label>
+      <button class="button primary full signin-submit" type="submit">Sign in <span>→</span></button>
+    </form>
+    <div class="login-foot"><a class="text-link" href="{{ url_for('login') }}">← Choose account type</a></div>
+  </section>
+  <aside class="login-art signin-art" aria-label="AttendEase attendance overview illustration">
+    <div class="art-orbit orbit-one"></div><div class="art-orbit orbit-two"></div><div class="art-orbit orbit-three"></div>
+    <div class="overview-card signin-overview-card">
+      <div class="overview-card-head"><span class="overview-logo">A</span><span><b>AttendEase</b><small>{{ 'TEACHER WORKSPACE' if login_role=='teacher' else 'STUDENT WORKSPACE' }}</small></span><span class="overview-menu">···</span></div>
+      <div class="overview-heading"><span>{{ 'Your classes, at a glance' if login_role=='teacher' else 'Your school day, in view' }}</span><span class="overview-check">✓</span></div>
+      <p class="overview-subtitle">{{ 'Attendance, schedules and reports in one place.' if login_role=='teacher' else 'Your attendance and class timetable, together.' }}</p>
+      <div class="overview-feature"><span class="feature-icon purple-feature">✓</span><span><b>{{ 'Manage attendance' if login_role=='teacher' else 'Your attendance' }}</b><small>{{ 'Record and update class statuses' if login_role=='teacher' else 'See your personal attendance record' }}</small></span><span class="feature-chevron">›</span></div>
+      <div class="overview-feature"><span class="feature-icon blue-feature">◷</span><span><b>Class timetable</b><small>{{ 'Keep each class organized' if login_role=='teacher' else 'Know what comes next' }}</small></span><span class="feature-chevron">›</span></div>
+      <div class="overview-feature"><span class="feature-icon green-feature">▤</span><span><b>{{ 'Attendance reports' if login_role=='teacher' else 'Personal report' }}</b><small>{{ 'Track attendance progress' if login_role=='teacher' else 'Review your attendance history' }}</small></span><span class="feature-chevron">›</span></div>
+      <div class="overview-card-footer"><span class="footer-spark">✦</span> {{ 'One clear view for every school day' if login_role=='teacher' else 'Your records, always in your view' }}</div>
+    </div>
+    <div class="art-caption">{{ 'Less time searching.' if login_role=='teacher' else 'Know where you stand.' }}<br><b>{{ 'More time supporting students.' if login_role=='teacher' else 'Stay on track every day.' }}</b></div>
+    <span class="art-decoration decoration-one">✦</span><span class="art-decoration decoration-two">＋</span>
+  </aside>
+</div>
 {% endblock %}

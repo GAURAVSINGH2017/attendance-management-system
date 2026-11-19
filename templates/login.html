@@ -1,4 +1,37 @@
-{% extends 'base.html' %}{% block title %}Sign in{% endblock %}{% block content %}
-<div class="login-wrap"><div class="login-card"><a class="brand login-brand" href="{{ url_for('login') }}"><span class="brand-icon">A</span><span>Attend<span class="brand-light">Ease</span></span></a><div class="eyebrow">WELCOME TO ATTENDEASE</div><h1>Choose your sign in</h1><p class="muted">Select the account type to continue.</p>
-<div class="form-stack"><a class="button primary full" href="{{ url_for('teacher_login') }}">Teacher login <span>→</span></a><a class="button secondary full" href="{{ url_for('student_login') }}">Student login <span>→</span></a></div><div class="login-foot">Students can view their own attendance. Teachers manage the full system.</div></div><div class="login-art"><div class="art-orbit orbit-one"></div><div class="art-orbit orbit-two"></div><div class="art-card"><div class="art-check">✓</div><span>Attendance made clear</span><strong>AttendEase</strong><small>For teachers and students</small></div><div class="art-caption">A clearer view<br>of every school day.</div></div></div>
+{% extends 'base.html' %}
+{% block title %}Welcome{% endblock %}
+{% block content %}
+<div class="login-wrap landing-wrap">
+  <section class="login-card landing-card">
+    <a class="brand login-brand" href="{{ url_for('login') }}"><span class="brand-icon">A</span><span>Attend<span class="brand-light">Ease</span></span></a>
+    <div class="login-eyebrow"><span class="live-dot"></span> ATTENDANCE MANAGEMENT</div>
+    <h1>Attendance,<br><span>made clear.</span></h1>
+    <p class="login-lead">A simple place to manage class attendance, follow progress, and keep everyone on the same page.</p>
+
+    <div class="role-options">
+      <a class="role-option teacher-option" href="{{ url_for('teacher_login') }}">
+        <span class="role-option-icon">✦</span><span class="role-option-copy"><b>Teacher login</b><small>Manage classes, attendance and reports</small></span><span class="role-arrow">→</span>
+      </a>
+      <a class="role-option student-option" href="{{ url_for('student_login') }}">
+        <span class="role-option-icon">◉</span><span class="role-option-copy"><b>Student login</b><small>View your own attendance and timetable</small></span><span class="role-arrow">→</span>
+      </a>
+    </div>
+    <div class="login-foot"><span class="secure-dot"></span> Students see their own records. Teachers manage the system.</div>
+  </section>
+
+  <aside class="login-art landing-art" aria-label="AttendEase attendance overview illustration">
+    <div class="art-orbit orbit-one"></div><div class="art-orbit orbit-two"></div><div class="art-orbit orbit-three"></div>
+    <div class="overview-card">
+      <div class="overview-card-head"><span class="overview-logo">A</span><span><b>AttendEase</b><small>CLASS OVERVIEW</small></span><span class="overview-menu">···</span></div>
+      <div class="overview-heading"><span>Stay on track</span><span class="overview-check">✓</span></div>
+      <p class="overview-subtitle">Everything for the school day, together.</p>
+      <div class="overview-feature"><span class="feature-icon purple-feature">✓</span><span><b>Attendance</b><small>Mark and review class records</small></span><span class="feature-chevron">›</span></div>
+      <div class="overview-feature"><span class="feature-icon blue-feature">◷</span><span><b>Timetable</b><small>Keep each class in rhythm</small></span><span class="feature-chevron">›</span></div>
+      <div class="overview-feature"><span class="feature-icon green-feature">▤</span><span><b>Reports</b><small>Understand attendance progress</small></span><span class="feature-chevron">›</span></div>
+      <div class="overview-card-footer"><span class="footer-spark">✦</span> One clear view for every school day</div>
+    </div>
+    <div class="art-caption">Less time searching.<br><b>More time supporting students.</b></div>
+    <span class="art-decoration decoration-one">✦</span><span class="art-decoration decoration-two">＋</span>
+  </aside>
+</div>
 {% endblock %}
