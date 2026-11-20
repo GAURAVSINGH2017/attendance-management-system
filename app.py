@@ -105,6 +105,8 @@ def normalize_whatsapp_number(phone):
 
     return digits
 
+app.jinja_env.globals["normalize_whatsapp_number"] = normalize_whatsapp_number
+
 def record_notification(student_id, attendance_date, subject_name, channel, recipient, status, details=""):
     try:
         query("""INSERT INTO notification_logs(student_id,attendance_date,subject_name,channel,recipient,delivery_status,details)
