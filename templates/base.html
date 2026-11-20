@@ -21,6 +21,7 @@
     <a class="nav-link {{ 'active' if request.endpoint=='attendance_history' else '' }}" href="{{ url_for('attendance_history') }}"><span>◷</span> Change history</a>
     <a class="nav-link {{ 'active' if request.endpoint in ['reports','export_report'] else '' }}" href="{{ url_for('reports') }}"><span>▤</span> Reports</a>
     <a class="nav-link {{ 'active' if request.endpoint=='notifications' else '' }}" href="{{ url_for('notifications') }}"><span>✉</span> Notifications</a>
+    <a class="nav-link {{ 'active' if request.endpoint=='student_passwords' else '' }}" href="{{ url_for('student_passwords') }}"><span>🔐</span> Student Passwords</a>
     <a class="nav-link {{ 'active' if request.endpoint in ['leave_requests','leave_detail','leave_pdf','leave_document'] else '' }}" href="{{ url_for('leave_requests') }}"><span>✎</span> Leave Requests</a>
     {% endif %}
   <div class="sidebar-bottom"><div class="profile"><span class="avatar">{{ current_user[:1]|upper }}</span><span><b>{{ current_user }}</b><small>{{ 'Student' if current_role=='student' else 'Teacher' }}</small></span></div><a class="logout" href="{{ url_for('student_change_password' if current_role=='student' else 'teacher_change_password') }}">Change password</a><a class="logout" href="{{ url_for('logout') }}">Sign out ↗</a></div>
