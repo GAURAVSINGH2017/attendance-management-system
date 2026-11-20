@@ -948,6 +948,428 @@ def export_report():
                          "Below 75%" if r["percentage"] is not None and r["percentage"] < 75 else ""])
     return Response("\ufeff" + output.getvalue(), mimetype="text/csv", headers={"Content-Disposition": "attachment; filename=attendance-report.csv"})
 
+# =========================
+# LEAVE APPLICATION SYSTEM
+# =========================
+
+LEAVE_TYPES = [
+    "Sick Leave",
+    "Personal Leave",
+    "Family Emergency",
+    "Medical Leave",
+    "Other",
+]
+
+MAX_LEAVE_FILES = 5
+MAX_LEAVE_FILE_SIZE = 5 * 1024 * 1024
+
+ALLOWED_LEAVE_EXTENSIONS = {"pdf", "jpg", "jpeg", "png"}
+
+
+def allowed_leave_file(filename):
+    return (
+        "." in filename
+        and filename.rsplit(".", 1)[1].lower() in ALLOWED_LEAVE_EXTENSIONS
+    )
+
+
+def get_student_leave(leave_id, student_id):
+    return query("""
+        SELECT l.*, s.full_name, s.roll_no, s.class_name, s.section,
+               s.date_of_birth, s.guardian_name
+        FROM leave_applications l
+        JOIN students s ON s.id = l.student_id
+        WHERE l.id = %s AND l.student_id = %s
+    """, (leave_id, student_id), one=True)
+
+
+def get_leave_documents(leave_id):
+    return query("""
+        SELECT id, leave_id, filename, mime_type, file_size, file_data
+        FROM leave_documents
+        WHERE leave_id = %s
+        ORDER BY id
+    """, (leave_id,))
+
+
+def leave_file_response(leave_id, doc_id, inline=False):
+    document = query("""
+        SELECT filename, mime_type, file_data
+        FROM leave_documents
+        WHERE id = %s AND leave_id = %s
+    """, (doc_id, leave_id), one=True)
+
+    if not document:
+        flash("Document nahi mila.", "error")
+        return redirect(url_for("leave_detail", leave_id=leave_id))
+
+    filename = secure_filename(document["filename"]) or "document"
+    disposition = "inline" if inline else "attachment"
+
+    return Response(
+        document["file_data"],
+        mimetype=document["mime_type"],
+        headers={
+            "Content-Disposition": f'{disposition}; filename="{filename}"',
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+def leave_pdf_response(leave, documents):
+    pdf_data = build_leave_pdf(leave, documents)
+    filename = secure_filename(
+        f"leave-application-{leave['id']}.pdf"
+    )
+
+    return Response(
+        pdf_data,
+        mimetype="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"'
+        },
+    )
+
+
+@app.route("/student/leave", methods=["GET", "POST"])
+@login_required
+def student_leave():
+    if session.get("user_role") != "student":
+        return redirect(url_for("dashboard"))
+
+    student = query("""
+        SELECT id, roll_no, full_name, class_name, section,
+               date_of_birth, guardian_name
+        FROM students
+        WHERE id = %s AND active = 1
+    """, (session.get("student_id"),), one=True)
+
+    if not student:
+        flash("Student account nahi mila.", "error")
+        return redirect(url_for("student_login"))
+
+    if request.method == "POST":
+        leave_type = request.form.get("leave_type", "").strip()
+        reason = request.form.get("reason", "").strip()
+
+        try:
+            from_date = date.fromisoformat(
+                request.form.get("from_date", "")
+            )
+            to_date = date.fromisoformat(
+                request.form.get("to_date", "")
+            )
+        except ValueError:
+            from_date = to_date = None
+
+        if leave_type not in LEAVE_TYPES:
+            flash("Valid leave type select karo.", "error")
+
+        elif not from_date or not to_date:
+            flash("Valid leave dates select karo.", "error")
+
+        elif from_date > to_date:
+            flash("To date, From date se pehle nahi ho sakti.", "error")
+
+        elif len(reason) < 10 or len(reason) > 2000:
+            flash("Reason 10 se 2000 characters ke beech hona chahiye.", "error")
+
+        else:
+            uploaded_files = [
+                f for f in request.files.getlist("documents")
+                if f and f.filename
+            ]
+
+            if len(uploaded_files) > MAX_LEAVE_FILES:
+                flash(
+                    f"Maximum {MAX_LEAVE_FILES} documents attach kar sakte ho.",
+                    "error",
+                )
+
+            else:
+                prepared_files = []
+                validation_error = None
+
+                for uploaded in uploaded_files:
+                    original_name = uploaded.filename.strip()
+                    filename = secure_filename(original_name)
+
+                    if not filename or not allowed_leave_file(filename):
+                        validation_error = (
+                            "Sirf PDF, JPG, JPEG aur PNG files allowed hain."
+                        )
+                        break
+
+                    file_data = uploaded.read(MAX_LEAVE_FILE_SIZE + 1)
+
+                    if not file_data:
+                        validation_error = "Empty file upload nahi kar sakte."
+                        break
+
+                    if len(file_data) > MAX_LEAVE_FILE_SIZE:
+                        validation_error = (
+                            "Har document ka size 5 MB se kam hona chahiye."
+                        )
+                        break
+
+                    mime_type = {
+                        "pdf": "application/pdf",
+                        "jpg": "image/jpeg",
+                        "jpeg": "image/jpeg",
+                        "png": "image/png",
+                    }[filename.rsplit(".", 1)[1].lower()]
+
+                    prepared_files.append((
+                        filename,
+                        mime_type,
+                        len(file_data),
+                        file_data,
+                    ))
+
+                if validation_error:
+                    flash(validation_error, "error")
+
+                else:
+                    conn = db()
+                    cur = conn.cursor()
+
+                    try:
+                        cur.execute("""
+                            INSERT INTO leave_applications
+                            (student_id, leave_type, from_date, to_date, reason)
+                            VALUES (%s, %s, %s, %s, %s)
+                        """, (
+                            student["id"],
+                            leave_type,
+                            from_date,
+                            to_date,
+                            reason,
+                        ))
+
+                        leave_id = cur.lastrowid
+
+                        for filename, mime_type, file_size, file_data in prepared_files:
+                            cur.execute("""
+                                INSERT INTO leave_documents
+                                (leave_id, filename, mime_type, file_size, file_data)
+                                VALUES (%s, %s, %s, %s, %s)
+                            """, (
+                                leave_id,
+                                filename,
+                                mime_type,
+                                file_size,
+                                file_data,
+                            ))
+
+                        conn.commit()
+                        flash("Leave application successfully submit ho gayi.", "success")
+                        return redirect(url_for("student_leave"))
+
+                    except Exception:
+                        conn.rollback()
+                        app.logger.exception("Leave application submission failed")
+                        flash("Application submit nahi ho payi. Dobara try karo.", "error")
+
+                    finally:
+                        cur.close()
+                        conn.close()
+
+    applications = query("""
+        SELECT l.*,
+               (SELECT COUNT(*) FROM leave_documents d
+                WHERE d.leave_id = l.id) AS doc_count
+        FROM leave_applications l
+        WHERE l.student_id = %s
+        ORDER BY l.created_at DESC
+    """, (student["id"],))
+
+    return render_template(
+        "student_leave.html",
+        student=student,
+        applications=applications,
+        leave_types=LEAVE_TYPES,
+        max_files=MAX_LEAVE_FILES,
+    )
+
+
+@app.get("/student/leave/<int:leave_id>/pdf")
+@login_required
+def student_leave_pdf(leave_id):
+    if session.get("user_role") != "student":
+        return redirect(url_for("dashboard"))
+
+    leave = get_student_leave(
+        leave_id,
+        session.get("student_id"),
+    )
+
+    if not leave:
+        flash("Leave application nahi mili.", "error")
+        return redirect(url_for("student_leave"))
+
+    documents = get_leave_documents(leave_id)
+
+    return leave_pdf_response(leave, documents)
+
+
+@app.get("/student/leave/<int:leave_id>/document/<int:doc_id>")
+@login_required
+def student_leave_document(leave_id, doc_id):
+    if session.get("user_role") != "student":
+        return redirect(url_for("dashboard"))
+
+    leave = get_student_leave(
+        leave_id,
+        session.get("student_id"),
+    )
+
+    if not leave:
+        flash("Leave application nahi mili.", "error")
+        return redirect(url_for("student_leave"))
+
+    return leave_file_response(leave_id, doc_id, inline=True)
+
+
+# -------------------------
+# TEACHER LEAVE MANAGEMENT
+# -------------------------
+
+@app.get("/leave-requests")
+@login_required
+def leave_requests():
+    if session.get("user_role") != "teacher":
+        return redirect(url_for("student_attendance"))
+
+    status = request.args.get("status", "Pending")
+
+    if status not in ("Pending", "Approved", "Rejected", "All"):
+        status = "Pending"
+
+    rows = query("""
+        SELECT l.id, l.leave_type, l.from_date, l.to_date,
+               l.status, s.full_name, s.roll_no,
+               s.class_name, s.section,
+               (SELECT COUNT(*) FROM leave_documents d
+                WHERE d.leave_id = l.id) AS doc_count
+        FROM leave_applications l
+        JOIN students s ON s.id = l.student_id
+        WHERE (%s = 'All' OR l.status = %s)
+        ORDER BY
+            CASE WHEN l.status = 'Pending' THEN 0 ELSE 1 END,
+            l.created_at DESC
+    """, (status, status))
+
+    return render_template(
+        "leave_requests.html",
+        rows=rows,
+        status=status,
+    )
+
+
+@app.route("/leave-requests/<int:leave_id>", methods=["GET", "POST"])
+@login_required
+def leave_detail(leave_id):
+    if session.get("user_role") != "teacher":
+        return redirect(url_for("student_attendance"))
+
+    leave = query("""
+        SELECT l.*, s.full_name, s.roll_no,
+               s.class_name, s.section,
+               s.date_of_birth, s.guardian_name,
+               u.username AS decided_by
+        FROM leave_applications l
+        JOIN students s ON s.id = l.student_id
+        LEFT JOIN users u ON u.id = l.decided_by
+        WHERE l.id = %s
+    """, (leave_id,), one=True)
+
+    if not leave:
+        flash("Leave application nahi mili.", "error")
+        return redirect(url_for("leave_requests"))
+
+    if request.method == "POST":
+        decision = request.form.get("decision", "").strip()
+        teacher_remark = request.form.get(
+            "teacher_remark", ""
+        ).strip()
+
+        if decision not in ("Approved", "Rejected"):
+            flash("Invalid decision.", "error")
+
+        elif len(teacher_remark) > 500:
+            flash("Teacher remark maximum 500 characters ka ho sakta hai.", "error")
+
+        else:
+            query("""
+                UPDATE leave_applications
+                SET status = %s,
+                    teacher_remark = %s,
+                    decided_by = %s,
+                    decided_at = NOW()
+                WHERE id = %s
+            """, (
+                decision,
+                teacher_remark or None,
+                session["user_id"],
+                leave_id,
+            ), write=True)
+
+            flash(
+                f"Leave application {decision.lower()} ho gayi.",
+                "success",
+            )
+            return redirect(url_for("leave_detail", leave_id=leave_id))
+
+    documents = get_leave_documents(leave_id)
+
+    return render_template(
+        "leave_detail.html",
+        leave=leave,
+        documents=documents,
+    )
+
+
+@app.get("/leave-requests/<int:leave_id>/pdf")
+@login_required
+def leave_pdf(leave_id):
+    if session.get("user_role") != "teacher":
+        return redirect(url_for("student_attendance"))
+
+    leave = query("""
+        SELECT l.*, s.full_name, s.roll_no,
+               s.class_name, s.section,
+               s.date_of_birth, s.guardian_name
+        FROM leave_applications l
+        JOIN students s ON s.id = l.student_id
+        WHERE l.id = %s
+    """, (leave_id,), one=True)
+
+    if not leave:
+        flash("Leave application nahi mili.", "error")
+        return redirect(url_for("leave_requests"))
+
+    documents = get_leave_documents(leave_id)
+
+    return leave_pdf_response(leave, documents)
+
+
+@app.get("/leave-requests/<int:leave_id>/document/<int:doc_id>")
+@login_required
+def leave_document(leave_id, doc_id):
+    if session.get("user_role") != "teacher":
+        return redirect(url_for("student_attendance"))
+
+    leave = query(
+        "SELECT id FROM leave_applications WHERE id = %s",
+        (leave_id,),
+        one=True,
+    )
+
+    if not leave:
+        flash("Leave application nahi mili.", "error")
+        return redirect(url_for("leave_requests"))
+
+    return leave_file_response(leave_id, doc_id, inline=True)
 
 if __name__ == "__main__":
     app.run(debug=os.getenv("FLASK_DEBUG", "false").lower() == "true")
