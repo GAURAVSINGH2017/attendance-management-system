@@ -145,12 +145,201 @@
 
                 {% set wa_message = "Hello, monthly attendance report for " ~ s.full_name ~ ", Class " ~ s.class_name ~ ", Roll No. " ~ s.roll_no ~ ", Month " ~ selected[5:7] ~ "/" ~ selected[:4] ~ " is ready. Please find the PDF attached. - AttendEase" %}
 
+                {% extends 'base.html' %}
+
+{% block heading %}Mark attendance{% endblock %}
+
+{% block content %}
+
+<div class="welcome-row">
+  <div>
+    <h2>Subject-wise attendance</h2>
+    <p class="muted">Choose a class and subject, then record each student's status.</p>
+  </div>
+</div>
+
+<div class="panel">
+
+  <form method="get" class="filter-bar" id="attendance-filters">
+
+    <label>
+      Date
+      <input type="date" name="attendance_date" value="{{ selected }}">
+    </label>
+
+    <label>
+      Class
+      <select name="class_name" id="attendance-class" required>
+        <option value="">Choose class</option>
+        {% for c in classes %}
+        <option value="{{ c.class_name }}" {{ 'selected' if selected_class==c.class_name else '' }}>
+          {{ c.class_name }}
+        </option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label>
+      Section
+      <select name="section" id="attendance-section" required data-selected="{{ selected_section_value }}">
+        <option value="">Choose section</option>
+        {% for s in sections %}
+        <option value="{{ s.section or '__blank__' }}" {{ 'selected' if selected_section_value==(s.section or '__blank__') else '' }}>
+          {{ s.section or 'General' }}
+        </option>
+        {% endfor %}
+        {% if selected_section_value=='__choose__' %}
+        <option value="__choose__" selected>Choose section</option>
+        {% endif %}
+      </select>
+    </label>
+
+    <label>
+      Subject
+      <select name="subject_id" id="attendance-subject" data-selected="{{ selected_subject }}" required>
+        <option value="">Choose subject</option>
+        {% for subject in subjects %}
+        <option value="{{ subject.id }}" {{ 'selected' if selected_subject|string==subject.id|string else '' }}>
+          {{ subject.subject_name }}{% if subject.teacher_name %} · {{ subject.teacher_name }}{% endif %}
+        </option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <button class="button secondary">Show students</button>
+  </form>
+
+  <form method="post">
+
+    <input type="hidden" name="attendance_date" value="{{ selected }}">
+    <input type="hidden" name="class_name" value="{{ selected_class }}">
+    <input type="hidden" name="section" value="{{ selected_section_value }}">
+    <input type="hidden" name="subject_id" value="{{ selected_subject }}">
+
+    <div class="attendance-tools">
+
+      <span>
+        <b>{{ students|length }}</b> students
+        <span class="muted">
+          · {{ selected }}
+          {% if selected_class %} · Class {{ selected_class }}{% endif %}
+          {% if selected_section and selected_section!='__choose__' %}
+          · Section {{ selected_section }}
+          {% endif %}
+        </span>
+      </span>
+
+      <div class="quick-actions">
+        <button type="button" class="button tiny secondary" data-set-all="Present">All present</button>
+        <button type="button" class="button tiny secondary" data-set-all="Absent">All absent</button>
+      </div>
+
+    </div>
+
+    <div class="table-scroll">
+
+      <table>
+        <thead>
+          <tr>
+            <th>STUDENT</th>
+            <th>ROLL NO.</th>
+            <th>CLASS</th>
+            <th>STATUS</th>
+            <th>MONTHLY REPORT</th>
+            <th>WHATSAPP</th>
+          </tr>
+        </thead>
+
+        <tbody>
+
+          {% for s in students %}
+
+          <tr>
+
+            <td class="student-cell">
+              <span class="table-avatar">{{ s.full_name[:1]|upper }}</span>
+              <b>{{ s.full_name }}</b>
+              <input type="hidden" name="student_id" value="{{ s.id }}">
+            </td>
+
+            <td>{{ s.roll_no }}</td>
+
+            <td>
+              {{ s.class_name }}
+              {% if s.section %} · {{ s.section }}{% endif %}
+            </td>
+
+            <td>
+              <select class="status-select status-{{ (s.status or 'Absent')|lower }}" name="status_{{ s.id }}">
+                <option {{ 'selected' if s.status=='Present' else '' }}>Present</option>
+                <option {{ 'selected' if s.status=='Absent' or not s.status else '' }}>Absent</option>
+                <option {{ 'selected' if s.status=='Late' else '' }}>Late</option>
+              </select>
+            </td>
+
+            <td>
+              <a class="button tiny secondary"
+                 href="{{ url_for('monthly_attendance_report', student_id=s.id, month=selected[5:7]|int, year=selected[:4]|int) }}"
+                 target="_blank">
+                Monthly PDF
+              </a>
+            </td>
+
+            <td>
+              {% set wa_number = normalize_whatsapp_number(s.guardian_phone) %}
+
+              {% if wa_number %}
+
+                {% set wa_message = "Hello, monthly attendance report for " ~ s.full_name ~ ", Class " ~ s.class_name ~ ", Roll No. " ~ s.roll_no ~ ", Month " ~ selected[5:7] ~ "/" ~ selected[:4] ~ " is ready. Please find the PDF attached. - AttendEase" %}
+
                 <a class="button tiny secondary"
-                   href="https://wa.me/{{ wa_number }}?text={{ wa_message|urlencode }}"
-                   target="_blank"
-                   rel="noopener">
-                  WhatsApp
-                </a>
+   href="https://wa.me/{{ wa_number }}?text={{ wa_message|urlencode }}"
+   target="_blank"
+   rel="noopener"
+   onclick="window.open('{{ url_for('monthly_attendance_report', student_id=s.id, month=selected[5:7]|int, year=selected[:4]|int) }}', '_blank');">
+   📄 Share Monthly Report
+</a>
+
+              {% else %}
+                <span class="muted">No valid number</span>
+              {% endif %}
+            </td>
+
+          </tr>
+
+          {% else %}
+
+          <tr>
+            <td colspan="6" class="empty-row">
+              Choose a class, section and subject above. If no subjects appear, add one from the Subjects page.
+            </td>
+          </tr>
+
+          {% endfor %}
+
+        </tbody>
+      </table>
+
+    </div>
+
+    <div class="form-actions attendance-submit">
+
+      <a href="{{ url_for('subjects') }}" class="text-link">
+        Manage subjects →
+      </a>
+
+      <button class="button primary"
+        {% if not students or not selected_class or not selected_subject %}disabled{% endif %}>
+        Save attendance
+      </button>
+
+    </div>
+
+  </form>
+
+</div>
+
+{% endblock %}
 
               {% else %}
                 <span class="muted">No valid number</span>
