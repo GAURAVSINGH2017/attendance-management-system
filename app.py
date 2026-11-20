@@ -91,6 +91,19 @@ def common_values():
     return {"today": date.today().isoformat(), "current_user": session.get("username"),
             "current_role": session.get("user_role", "teacher"), "email_ready": email_ready}
 
+def normalize_whatsapp_number(phone):
+    digits = re.sub(r"\D", "", str(phone or ""))
+
+    if len(digits) == 10:
+        digits = "91" + digits
+    elif len(digits) == 11 and digits.startswith("0"):
+        digits = "91" + digits[1:]
+    elif len(digits) == 12 and digits.startswith("91"):
+        pass
+    else:
+        return None
+
+    return digits
 
 def record_notification(student_id, attendance_date, subject_name, channel, recipient, status, details=""):
     try:
