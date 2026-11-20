@@ -201,6 +201,54 @@ if bootstrap_username and len(bootstrap_password) >= 8:
     else:
         print("Bootstrap password skipped: that username belongs to a student account.")
 
+# ==========================================
+    # LEAVE APPLICATION SYSTEM
+    # ==========================================
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS leave_applications (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        student_id INT NOT NULL,
+        leave_type VARCHAR(50) NOT NULL,
+        from_date DATE NOT NULL,
+        to_date DATE NOT NULL,
+        reason TEXT NOT NULL,
+        status ENUM('Pending','Approved','Rejected')
+            NOT NULL DEFAULT 'Pending',
+        teacher_remark VARCHAR(500) DEFAULT NULL,
+        decided_by INT DEFAULT NULL,
+        decided_at DATETIME DEFAULT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_leave_student (student_id),
+        INDEX idx_leave_status (status),
+        INDEX idx_leave_dates (from_date, to_date),
+        CONSTRAINT fk_leave_student
+            FOREIGN KEY (student_id) REFERENCES students(id),
+        CONSTRAINT fk_leave_reviewer
+            FOREIGN KEY (decided_by) REFERENCES users(id)
+            ON DELETE SET NULL
+    )
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS leave_documents (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        leave_id INT NOT NULL,
+        filename VARCHAR(255) NOT NULL,
+        mime_type VARCHAR(100) NOT NULL,
+        file_size INT NOT NULL,
+        file_data LONGBLOB NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_leave_document (leave_id),
+        CONSTRAINT fk_leave_document_application
+            FOREIGN KEY (leave_id)
+            REFERENCES leave_applications(id)
+            ON DELETE CASCADE
+    )
+    """)
+
+    print("Leave application tables are ready.")
 
 conn.commit()
 cur.close()
