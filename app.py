@@ -6,6 +6,7 @@ import re
 import smtplib
 import urllib.error
 import urllib.request
+from urllib.parse import quote
 import unicodedata
 from datetime import date, datetime, timedelta
 from email.message import EmailMessage
