@@ -1,0 +1,36 @@
+{% extends 'base.html' %}{% block title %}Leave applications{% endblock %}{% block heading %}Leave applications{% endblock %}{% block content %}
+<div class="panel edit-panel">
+  <h2>New leave application</h2>
+  <p class="muted">Aapki naam, roll no. aur class apne aap bhar jayenge. Leave ka type, dates aur reason likhein, zaroori documents attach karein.</p>
+  <form method="post" enctype="multipart/form-data" class="form-grid">
+    <label>Student<input value="{{ student.full_name }} · Roll {{ student.roll_no }} · Class {{ student.class_name }}{% if student.section %} {{ student.section }}{% endif %}" disabled></label>
+    <label>Leave type *<select name="leave_type" required><option value="">Choose type</option>{% for t in leave_types %}<option value="{{ t }}">{{ t }}</option>{% endfor %}</select></label>
+    <label>From date *<input type="date" name="from_date" required></label>
+    <label>To date *<input type="date" name="to_date" required></label>
+    <label class="wide">Reason *<textarea name="reason" rows="4" minlength="10" maxlength="2000" required placeholder="Leave ka reason likhein"></textarea></label>
+    <label class="wide">Supporting documents (optional) · max {{ max_files }} files, har file 5 MB tak, PDF / JPG / PNG<input type="file" name="documents" multiple accept=".pdf,.jpg,.jpeg,.png"></label>
+    <div class="form-actions wide"><button class="button primary" type="submit">Submit application</button></div>
+  </form>
+</div>
+<div class="panel">
+  <div class="panel-head"><div><h3>My applications</h3><p class="muted">Teacher approve ya reject karega. Status yahan dikhega.</p></div></div>
+  <div class="table-scroll"><table>
+    <thead><tr><th>TYPE</th><th>FROM</th><th>TO</th><th>DOCUMENTS</th><th>STATUS</th><th>TEACHER REMARK</th><th>APPLICATION</th></tr></thead>
+    <tbody>
+    {% for a in applications %}
+      <tr>
+        <td>{{ a.leave_type }}</td>
+        <td>{{ a.from_date.strftime('%d %b %Y') }}</td>
+        <td>{{ a.to_date.strftime('%d %b %Y') }}</td>
+        <td>{{ a.doc_count }}</td>
+        <td><span class="status-pill status-{{ a.status|lower }}">{{ a.status }}</span></td>
+        <td>{{ a.teacher_remark or '—' }}</td>
+        <td><a class="text-link" href="{{ url_for('student_leave_pdf', leave_id=a.id) }}">Download PDF →</a></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" class="empty-row">Abhi tak koi leave application nahi hai.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endblock %}

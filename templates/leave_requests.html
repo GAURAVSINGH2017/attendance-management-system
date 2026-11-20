@@ -1,0 +1,26 @@
+{% extends 'base.html' %}{% block title %}Leave requests{% endblock %}{% block heading %}Leave requests{% endblock %}{% block content %}
+<div class="welcome-row"><div><h2>Leave requests</h2><p class="muted">Student leave applications ko review karke approve ya reject karein.</p></div></div>
+<div class="filter-row">
+  {% for s in ['Pending','Approved','Rejected','All'] %}<a href="{{ url_for('leave_requests', status=s) }}" class="{{ 'active' if status==s else '' }}">{{ s }}</a>{% endfor %}
+</div>
+<div class="panel">
+  <div class="table-scroll"><table>
+    <thead><tr><th>STUDENT</th><th>CLASS</th><th>TYPE</th><th>DATES</th><th>DOCUMENTS</th><th>STATUS</th><th>ACTION</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td>{{ r.full_name }} <span class="muted">· Roll {{ r.roll_no }}</span></td>
+        <td>{{ r.class_name }}{% if r.section %} · {{ r.section }}{% endif %}</td>
+        <td>{{ r.leave_type }}</td>
+        <td>{{ r.from_date.strftime('%d %b') }} – {{ r.to_date.strftime('%d %b %Y') }}</td>
+        <td>{{ r.doc_count }}</td>
+        <td><span class="status-pill status-{{ r.status|lower }}">{{ r.status }}</span></td>
+        <td><a class="text-link" href="{{ url_for('leave_detail', leave_id=r.id) }}">Review →</a></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" class="empty-row">Is filter mein koi leave application nahi hai.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endblock %}

@@ -1,0 +1,27 @@
+{% extends 'base.html' %}{% block title %}Leave application{% endblock %}{% block heading %}Leave application{% endblock %}{% block content %}
+<div class="welcome-row"><div><h2>{{ leave.full_name }} · {{ leave.leave_type }}</h2><p class="muted">Roll {{ leave.roll_no }} · Class {{ leave.class_name }}{% if leave.section %} · {{ leave.section }}{% endif %}</p></div>
+  <a class="button secondary" href="{{ url_for('leave_pdf', leave_id=leave.id) }}">Download PDF</a></div>
+<div class="panel">
+  <h3>Application details</h3>
+  <p><b>Leave type:</b> {{ leave.leave_type }}</p>
+  <p><b>Dates:</b> {{ leave.from_date.strftime('%d %b %Y') }} to {{ leave.to_date.strftime('%d %b %Y') }} ({{ (leave.to_date - leave.from_date).days + 1 }} day(s))</p>
+  <p><b>Applied on:</b> {{ leave.created_at.strftime('%d %b %Y, %H:%M') }}</p>
+  <p><b>Status:</b> <span class="status-pill status-{{ leave.status|lower }}">{{ leave.status }}</span>{% if leave.decided_by %} · by {{ leave.decided_by }}{% endif %}</p>
+  <h3>Reason</h3>
+  <p class="pre-wrap">{{ leave.reason }}</p>
+  <h3>Documents</h3>
+  {% if documents %}
+    <ul>{% for d in documents %}<li><a class="text-link" href="{{ url_for('leave_document', leave_id=leave.id, doc_id=d.id) }}" target="_blank">{{ d.filename }}</a> <span class="muted">({{ (d.file_size / 1024)|round(0)|int }} KB)</span></li>{% endfor %}</ul>
+  {% else %}<p class="muted">Koi document attach nahi hai.</p>{% endif %}
+</div>
+<div class="panel edit-panel">
+  <h3>Decision</h3>
+  <form method="post" class="form-stack">
+    <label>Teacher remark (optional)<textarea name="teacher_remark" rows="3" maxlength="500">{{ leave.teacher_remark or '' }}</textarea></label>
+    <div class="form-actions">
+      <button class="button primary" name="decision" value="Approved" type="submit">Approve</button>
+      <button class="button secondary" name="decision" value="Rejected" type="submit">Reject</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

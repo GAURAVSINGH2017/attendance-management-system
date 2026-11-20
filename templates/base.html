@@ -11,7 +11,7 @@
 {% if current_user %}<aside class="sidebar">
   <div class="brand-row"><a class="brand" href="{{ url_for('dashboard') }}"><span class="brand-icon">A</span><span>Attend<span class="brand-light">Ease</span></span></a><button class="mobile-nav-toggle" type="button" aria-label="Toggle navigation" aria-expanded="false" aria-controls="main-navigation">☰</button></div>
   <div class="nav-label">MAIN MENU</div>
-  <nav id="main-navigation">{% if current_role=='student' %}<a class="nav-link {{ 'active' if request.endpoint=='student_attendance' else '' }}" href="{{ url_for('student_attendance') }}"><span>▤</span> My attendance</a>{% else %}<a class="nav-link {{ 'active' if request.endpoint=='dashboard' else '' }}" href="{{ url_for('dashboard') }}"><span>▦</span> Overview</a>
+  <nav id="main-navigation">{% if current_role=='student' %}<a class="nav-link {{ 'active' if request.endpoint=='student_attendance' else '' }}" href="{{ url_for('student_attendance') }}"><span>▤</span> My attendance</a><a class="nav-link {{ 'active' if request.endpoint in ['student_leave','student_leave_print'] else '' }}" href="{{ url_for('student_leave') }}"><span>✎</span> Leave application</a>{% else %}<a class="nav-link {{ 'active' if request.endpoint=='dashboard' else '' }}" href="{{ url_for('dashboard') }}"><span>▦</span> Overview</a>
     <a class="nav-link {{ 'active' if request.endpoint in ['students','edit_student'] else '' }}" href="{{ url_for('students') }}"><span>♙</span> Students</a>
     <a class="nav-link {{ 'active' if request.endpoint in ['classes','bulk_add_students','class_detail'] else '' }}" href="{{ url_for('classes') }}"><span>▦</span> Classes</a>
     <a class="nav-link {{ 'active' if request.endpoint=='teachers' else '' }}" href="{{ url_for('teachers') }}"><span>♙</span> Teachers</a>
@@ -20,7 +20,8 @@
     <a class="nav-link {{ 'active' if request.endpoint=='attendance' else '' }}" href="{{ url_for('attendance') }}"><span>✓</span> Mark attendance</a>
     <a class="nav-link {{ 'active' if request.endpoint=='attendance_history' else '' }}" href="{{ url_for('attendance_history') }}"><span>◷</span> Change history</a>
     <a class="nav-link {{ 'active' if request.endpoint in ['reports','export_report'] else '' }}" href="{{ url_for('reports') }}"><span>▤</span> Reports</a>
-    <a class="nav-link {{ 'active' if request.endpoint=='notifications' else '' }}" href="{{ url_for('notifications') }}"><span>✉</span> Notifications</a>{% endif %}</nav>
+    <a class="nav-link {{ 'active' if request.endpoint=='notifications' else '' }}" href="{{ url_for('notifications') }}"><span>✉</span> Notifications</a>
+    <a class="nav-link {{ 'active' if request.endpoint in ['leave_requests','leave_detail','leave_print'] else '' }}" href="{{ url_for('leave_requests') }}"><span>✎</span> Leave requests</a>{% endif %}</nav>
   <div class="sidebar-bottom"><div class="profile"><span class="avatar">{{ current_user[:1]|upper }}</span><span><b>{{ current_user }}</b><small>{{ 'Student' if current_role=='student' else 'Teacher' }}</small></span></div><a class="logout" href="{{ url_for('student_change_password' if current_role=='student' else 'teacher_change_password') }}">Change password</a><a class="logout" href="{{ url_for('logout') }}">Sign out ↗</a></div>
 </aside>{% endif %}
 <main class="main {{ 'main-login' if not current_user else '' }}">
