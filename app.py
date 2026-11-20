@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 from flask import Flask, Response, flash, jsonify, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
-from leave_pdf import build_leave_pdf
+from leave_pdf import build_leave_pdf, build_monthly_attendance_pdf
 
 import secrets
 
