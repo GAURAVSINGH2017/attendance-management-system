@@ -14,6 +14,8 @@ import mysql.connector
 from dotenv import load_dotenv
 from flask import Flask, Response, flash, jsonify, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.utils import secure_filename
+from leave_pdf import build_leave_pdf
 
 load_dotenv()
 app = Flask(__name__)
@@ -64,7 +66,13 @@ def login_required(fn):
         if session.get("user_role", "teacher") == "student":
             if session.get("must_change_password") and request.endpoint != "student_change_password":
                 return redirect(url_for("student_change_password"))
-            if request.endpoint not in ("student_attendance", "student_change_password"):
+            if request.endpoint not in (
+    "student_attendance",
+    "student_change_password",
+    "student_leave",
+    "student_leave_pdf",
+    "student_leave_document",
+):
                 return redirect(url_for("student_attendance"))
         return fn(*args, **kwargs)
     return wrapped
