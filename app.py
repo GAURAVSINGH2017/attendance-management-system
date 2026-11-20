@@ -17,6 +17,8 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 from leave_pdf import build_leave_pdf
 
+import secrets
+
 load_dotenv()
 app = Flask(__name__)
 secret_key = os.getenv("SECRET_KEY")
@@ -947,6 +949,78 @@ def export_report():
                          r["absent"] or 0, r["late"] or 0, r["marked"], r["percentage"] or 0,
                          "Below 75%" if r["percentage"] is not None and r["percentage"] < 75 else ""])
     return Response("\ufeff" + output.getvalue(), mimetype="text/csv", headers={"Content-Disposition": "attachment; filename=attendance-report.csv"})
+
+# =========================
+# STUDENT PASSWORD MANAGEMENT
+# =========================
+
+@app.route("/student-passwords", methods=["GET", "POST"])
+@login_required
+def student_passwords():
+    if session.get("user_role") != "teacher":
+        return redirect(url_for("student_attendance"))
+
+    if request.method == "POST":
+        try:
+            student_id = int(request.form.get("student_id", "0"))
+        except ValueError:
+            student_id = 0
+
+        new_password = request.form.get("new_password", "")
+        confirm_password = request.form.get("confirm_password", "")
+
+        student = query(
+            "SELECT id, full_name FROM students WHERE id=%s AND active=1",
+            (student_id,),
+            one=True
+        )
+
+        if not student:
+            flash("Student nahi mila.", "error")
+
+        elif len(new_password) < 8:
+            flash("Password kam se kam 8 characters ka hona chahiye.", "error")
+
+        elif new_password != confirm_password:
+            flash("Dono password match nahi karte.", "error")
+
+        else:
+            user = query(
+                "SELECT id FROM users WHERE student_id=%s AND role='student'",
+                (student_id,),
+                one=True
+            )
+
+            if not user:
+                flash("Student login account nahi mila.", "error")
+            else:
+                query(
+                    """UPDATE users
+                       SET password_hash=%s, must_change_password=1
+                       WHERE id=%s AND role='student'""",
+                    (generate_password_hash(new_password), user["id"]),
+                    write=True
+                )
+                flash(
+                    f"{student['full_name']} ka password successfully update ho gaya.",
+                    "success"
+                )
+                return redirect(url_for("student_passwords"))
+
+    students_list = query("""
+        SELECT s.id, s.full_name, s.roll_no, s.class_name,
+               s.section, u.username
+        FROM students s
+        LEFT JOIN users u
+            ON u.student_id=s.id AND u.role='student'
+        WHERE s.active=1
+        ORDER BY s.class_name, s.section, s.roll_no
+    """)
+
+    return render_template(
+        "student_passwords.html",
+        students=students_list
+    )
 
 # =========================
 # LEAVE APPLICATION SYSTEM
