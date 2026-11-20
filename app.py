@@ -916,6 +916,63 @@ def attendance_history():
       ORDER BY h.changed_at DESC,h.id DESC LIMIT 200""")
     return render_template("attendance_history.html", history=rows)
 
+@app.get("/students/<int:student_id>/monthly-report")
+@login_required
+def monthly_attendance_report(student_id):
+    if session.get("user_role") != "teacher":
+        return redirect(url_for("student_attendance"))
+
+    try:
+        month = int(request.args.get("month", datetime.now().month))
+        year = int(request.args.get("year", datetime.now().year))
+
+        if month < 1 or month > 12 or year < 2000 or year > 2100:
+            raise ValueError
+
+    except (ValueError, TypeError):
+        flash("Invalid report month or year.", "error")
+        return redirect(url_for("students"))
+
+    student = query(
+        """SELECT id, full_name, roll_no, class_name, section
+           FROM students
+           WHERE id=%s AND active=1""",
+        (student_id,),
+        one=True
+    )
+
+    if not student:
+        flash("Student nahi mila.", "error")
+        return redirect(url_for("students"))
+
+    records = query(
+        """SELECT a.attendance_date, sub.subject_name, a.status
+           FROM attendance a
+           JOIN subjects sub ON sub.id=a.subject_id
+           WHERE a.student_id=%s
+             AND YEAR(a.attendance_date)=%s
+             AND MONTH(a.attendance_date)=%s
+           ORDER BY a.attendance_date, sub.subject_name""",
+        (student_id, year, month)
+    )
+
+    month_label = datetime(year, month, 1).strftime("%B %Y")
+
+    pdf_data = build_monthly_attendance_pdf(
+        student, month_label, records
+    )
+
+    filename = secure_filename(
+        f"{student['full_name']}_{month_label}_attendance.pdf"
+    )
+
+    return Response(
+        pdf_data,
+        mimetype="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"'
+        }
+    )
 
 @app.get("/reports")
 @login_required
