@@ -874,7 +874,7 @@ def attendance():
         return redirect(url_for("attendance", attendance_date=selected, class_name=klass,
                                 section=selected_section_value, subject_id=subject_id))
     if klass and subject_id and selected_section_value not in ("", "__choose__"):
-        sql = """SELECT s.id,s.roll_no,s.full_name,s.class_name,s.section,a.status
+        sql = """SELECT s.id,s.roll_no,s.full_name,s.class_name,s.section,s.guardian_phone,a.status
           FROM students s LEFT JOIN attendance a ON a.student_id=s.id AND a.attendance_date=%s AND a.subject_id=%s
           WHERE s.active=1 AND s.class_name=%s AND COALESCE(s.section,'')=%s ORDER BY s.roll_no"""
         rows = query(sql, (selected, subject_id, klass, section))
