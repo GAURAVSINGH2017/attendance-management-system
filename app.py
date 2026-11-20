@@ -479,12 +479,13 @@ def edit_student(sid):
             cur = conn.cursor()
             try:
                 cur.execute("""UPDATE students SET roll_no=%s,full_name=%s,class_name=%s,section=%s,date_of_birth=%s,email=%s,
-                  guardian_name=%s,guardian_email=%s WHERE id=%s""",
+guardian_name=%s,guardian_email=%s,guardian_phone=%s WHERE id=%s""",
                     (request.form["roll_no"].strip(), full_name, request.form["class_name"].strip(),
                      request.form.get("section", "").strip(), dob,
                      request.form.get("email", "").strip() or None,
                      request.form.get("guardian_name", "").strip() or None,
-                     request.form.get("guardian_email", "").strip() or None, sid))
+                     request.form.get("guardian_email", "").strip() or None,
+                     request.form.get("guardian_phone","").strip() or None,sid))
                 created_login = None
                 if not student_login:
                     created_login = create_student_login(cur, sid, full_name, dob)
