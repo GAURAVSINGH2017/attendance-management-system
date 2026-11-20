@@ -201,6 +201,7 @@ if bootstrap_username and len(bootstrap_password) >= 8:
     else:
         print("Bootstrap password skipped: that username belongs to a student account.")
 
+
 conn.commit()
 cur.close()
 conn.close()
