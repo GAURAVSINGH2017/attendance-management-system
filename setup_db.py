@@ -15,7 +15,14 @@ db_options = dict(
 )
 if os.getenv("DB_SSL_CA"):
     db_options.update(ssl_ca=os.getenv("DB_SSL_CA"), ssl_verify_cert=True, ssl_verify_identity=True)
-conn = mysql.connector.connect(**db_options)
+print("Connecting to database...", flush=True)
+
+conn = mysql.connector.connect(
+    **db_options,
+    connection_timeout=15
+)
+
+print("Database connected successfully.", flush=True)
 cur = conn.cursor()
 
 cur.execute("""CREATE TABLE IF NOT EXISTS users (
