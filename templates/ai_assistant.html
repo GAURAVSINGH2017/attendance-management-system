@@ -74,38 +74,51 @@
     });
   }
 
-  // Format AI response
-  function renderBotMessage(bubble, text) {
-    bubble.replaceChildren();
+function renderBotMessage(bubble, text) {
+  bubble.replaceChildren();
 
-    let normalizedText = String(text || "")
-      .replace(/\r\n/g, "\n")
-      .replace(/(#{1,3}\s)/g, "\n$1")
-      .replace(/(\*\*[^*]+:\*\*)/g, "\n$1");
+  const lines = String(text || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/([^\n])\s*(#{1,3}\s)/g, "$1\n$2")
+    .split("\n");
 
-    normalizedText.split("\n").forEach(function (line) {
-      const cleanLine = line.trim();
-      const p = document.createElement("p");
+  lines.forEach(function (line) {
+    const cleanLine = line.trim();
 
-      if (!cleanLine) {
-        p.className = "ai-space";
-      } else if (/^#{1,3}\s/.test(cleanLine)) {
-        const heading = document.createElement("strong");
-        appendInlineFormatting(
-          heading,
-          cleanLine.replace(/^#{1,3}\s+/, "")
-        );
-        p.appendChild(heading);
-      } else if (/^[-*]\s+/.test(cleanLine)) {
-        p.textContent = "• ";
-        appendInlineFormatting(p, cleanLine.replace(/^[-*]\s+/, ""));
-      } else {
-        appendInlineFormatting(p, cleanLine);
-      }
+    if (!cleanLine) return;
 
-      bubble.appendChild(p);
-    });
-  }
+    const element = document.createElement("div");
+
+    if (/^#{1,3}\s/.test(cleanLine)) {
+      element.className = "ai-response-heading";
+
+      const heading = document.createElement("strong");
+      heading.textContent = cleanLine.replace(/^#{1,3}\s+/, "");
+      element.appendChild(heading);
+
+    } else if (/^[-*]\s+/.test(cleanLine)) {
+      element.className = "ai-response-item";
+      element.textContent = "• " + cleanLine.replace(/^[-*]\s+/, "");
+
+    } else {
+      element.className = "ai-response-line";
+
+      const parts = cleanLine.split(/(\*\*.*?\*\*)/g);
+
+      parts.forEach(function (part) {
+        if (part.startsWith("**") && part.endsWith("**")) {
+          const strong = document.createElement("strong");
+          strong.textContent = part.slice(2, -2);
+          element.appendChild(strong);
+        } else {
+          element.appendChild(document.createTextNode(part));
+        }
+      });
+    }
+
+    bubble.appendChild(element);
+  });
+}
 
   function addMessage(text, type) {
     const row = document.createElement("div");
