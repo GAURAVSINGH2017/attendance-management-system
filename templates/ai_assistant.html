@@ -79,41 +79,62 @@ function renderBotMessage(bubble, text) {
 
   const lines = String(text || "")
     .replace(/\r\n/g, "\n")
-    .replace(/([^\n])\s*(#{1,3}\s)/g, "$1\n$2")
     .split("\n");
 
-  lines.forEach(function (line) {
-    const cleanLine = line.trim();
+  function addFormattedText(element, value) {
+    const parts = value.split(/(\*\*.*?\*\*)/g);
+
+    parts.forEach(function (part) {
+      if (part.startsWith("**") && part.endsWith("**")) {
+        const strong = document.createElement("strong");
+        strong.textContent = part.slice(2, -2);
+        element.appendChild(strong);
+      } else {
+        element.appendChild(document.createTextNode(part));
+      }
+    });
+  }
+
+  lines.forEach(function (line, index) {
+    let cleanLine = line.trim();
+
+    if (!cleanLine) return;
+
+    // Handle # on a separate line
+    let isHeading = false;
+
+    if (/^#{1,3}$/.test(cleanLine)) {
+      isHeading = true;
+      cleanLine = lines[index + 1]
+        ? lines[index + 1].trim()
+        : "";
+    } else if (/^#{1,3}\s+/.test(cleanLine)) {
+      isHeading = true;
+      cleanLine = cleanLine.replace(/^#{1,3}\s+/, "");
+    }
 
     if (!cleanLine) return;
 
     const element = document.createElement("div");
 
-    if (/^#{1,3}\s/.test(cleanLine)) {
+    if (isHeading) {
       element.className = "ai-response-heading";
+      addFormattedText(element, cleanLine);
 
-      const heading = document.createElement("strong");
-      heading.textContent = cleanLine.replace(/^#{1,3}\s+/, "");
-      element.appendChild(heading);
-
-    } else if (/^[-*]\s+/.test(cleanLine)) {
+    } else if (/^[-*•]\s+/.test(cleanLine)) {
       element.className = "ai-response-item";
-      element.textContent = "• " + cleanLine.replace(/^[-*]\s+/, "");
+
+      const bullet = document.createTextNode("• ");
+      element.appendChild(bullet);
+
+      addFormattedText(
+        element,
+        cleanLine.replace(/^[-*•]\s+/, "")
+      );
 
     } else {
       element.className = "ai-response-line";
-
-      const parts = cleanLine.split(/(\*\*.*?\*\*)/g);
-
-      parts.forEach(function (part) {
-        if (part.startsWith("**") && part.endsWith("**")) {
-          const strong = document.createElement("strong");
-          strong.textContent = part.slice(2, -2);
-          element.appendChild(strong);
-        } else {
-          element.appendChild(document.createTextNode(part));
-        }
-      });
+      addFormattedText(element, cleanLine);
     }
 
     bubble.appendChild(element);
