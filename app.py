@@ -1612,9 +1612,9 @@ def ai_chat():
 
     model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
     url = (
-        "https://generativelanguage.googleapis.com/v1beta/"
-        + model + ":generateContent"
-    )
+    "https://generativelanguage.googleapis.com/v1beta/models/"
+    + model + ":generateContent"
+)
 
     payload = {
         "systemInstruction": {
