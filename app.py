@@ -75,6 +75,8 @@ def login_required(fn):
     "student_leave",
     "student_leave_pdf",
     "student_leave_document",
+    "ai_assistant",
+    "ai_chat",
 ):
                 return redirect(url_for("student_attendance"))
         return fn(*args, **kwargs)
