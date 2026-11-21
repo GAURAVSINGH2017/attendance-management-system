@@ -1520,6 +1520,150 @@ def leave_document(leave_id, doc_id):
         return redirect(url_for("leave_requests"))
 
     return leave_file_response(leave_id, doc_id, inline=True)
+# -------------------------
+# ATTENDEASE AI ASSISTANT
+# -------------------------
 
+@app.get("/ai-assistant")
+@login_required
+def ai_assistant():
+    return render_template("ai_assistant.html")
+
+
+@app.post("/api/ai-chat")
+@login_required
+def ai_chat():
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        return jsonify({"error": "AI service is not configured. Please contact the administrator."}), 503
+
+    data = request.get_json(silent=True) or {}
+    message = str(data.get("message", "")).strip()
+
+    if not message:
+        return jsonify({"error": "Please enter a message."}), 400
+
+    if len(message) > 1000:
+        return jsonify({"error": "Message must be under 1000 characters."}), 400
+
+    role = session.get("user_role", "teacher")
+
+    if role == "student":
+        student_id = session.get("student_id")
+        if not student_id:
+            return jsonify({"error": "Student account not found."}), 403
+
+        student = query(
+            """SELECT id, full_name, roll_no, class_name, section
+               FROM students WHERE id=%s AND active=1""",
+            (student_id,),
+            one=True
+        )
+
+        if not student:
+            return jsonify({"error": "Student account not found."}), 403
+
+        attendance = query(
+            """SELECT COUNT(*) AS total,
+               COALESCE(SUM(status='Present'),0) AS present,
+               COALESCE(SUM(status='Absent'),0) AS absent,
+               COALESCE(SUM(status='Late'),0) AS late,
+               ROUND(100*COALESCE(SUM(status='Present'),0) /
+               NULLIF(COUNT(*),0),1) AS percentage
+               FROM attendance WHERE student_id=%s""",
+            (student_id,),
+            one=True
+        )
+
+        context = (
+            f"Student: {student['full_name']}\n"
+            f"Class: {student['class_name']}, Section: {student['section']}\n"
+            f"Attendance summary: {attendance}"
+        )
+
+        system_prompt = (
+            "You are AttendEase AI, a helpful attendance assistant. "
+            "Answer in simple English or Hinglish according to the user's language. "
+            "Use only the supplied attendance information for personal attendance questions. "
+            "Never invent attendance records."
+        )
+
+    elif role == "teacher":
+        summary = query(
+            """SELECT COUNT(*) AS total,
+               COALESCE(SUM(status='Present'),0) AS present,
+               COALESCE(SUM(status='Absent'),0) AS absent,
+               COALESCE(SUM(status='Late'),0) AS late
+               FROM attendance""",
+            one=True
+        )
+
+        context = f"Overall attendance summary: {summary}"
+
+        system_prompt = (
+            "You are AttendEase AI, a helpful assistant for teachers. "
+            "Answer in simple English or Hinglish according to the user's language. "
+            "Use the supplied overall attendance summary when relevant. "
+            "Do not invent student records or claim to perform actions."
+        )
+
+    else:
+        return jsonify({"error": "Access denied."}), 403
+
+    model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    url = (
+        "https://generativelanguage.googleapis.com/v1beta/"
+        + model + ":generateContent"
+    )
+
+    payload = {
+        "systemInstruction": {
+            "parts": [{"text": system_prompt + "\n\n" + context}]
+        },
+        "contents": [
+            {"role": "user", "parts": [{"text": message}]}
+        ],
+        "generationConfig": {
+            "maxOutputTokens": 500,
+            "temperature": 0.5
+        }
+    }
+
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "x-goog-api-key": api_key
+        },
+        method="POST"
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=25) as response:
+            result = json.loads(response.read().decode("utf-8"))
+
+        answer = result["candidates"][0]["content"]["parts"][0]["text"]
+        return jsonify({"reply": answer})
+
+    except urllib.error.HTTPError as error:
+        app.logger.error("Gemini API returned HTTP %s", error.code)
+        return jsonify({
+            "error": "AI service request failed. Please try again later."
+        }), 502
+
+    except (urllib.error.URLError, TimeoutError):
+        return jsonify({
+            "error": "AI service is temporarily unavailable."
+        }), 503
+
+    except (KeyError, IndexError, ValueError):
+        return jsonify({
+            "error": "AI could not generate a response. Please try again."
+        }), 502
+
+    except Exception:
+        app.logger.exception("AI assistant error")
+        return jsonify({"error": "Something went wrong. Please try again."}), 500
 if __name__ == "__main__":
     app.run(debug=os.getenv("FLASK_DEBUG", "false").lower() == "true")
