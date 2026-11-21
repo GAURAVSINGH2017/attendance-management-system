@@ -24,7 +24,14 @@
     <a class="nav-link {{ 'active' if request.endpoint=='student_passwords' else '' }}" href="{{ url_for('student_passwords') }}"><span>🔐</span> Student Passwords</a>
     <a class="nav-link {{ 'active' if request.endpoint in ['leave_requests','leave_detail','leave_pdf','leave_document'] else '' }}" href="{{ url_for('leave_requests') }}"><span>✎</span> Leave Requests</a>
     {% endif %}
-  <div class="sidebar-bottom"><div class="profile"><span class="avatar">{{ current_user[:1]|upper }}</span><span><b>{{ current_user }}</b><small>{{ 'Student' if current_role=='student' else 'Teacher' }}</small></span></div><a class="logout" href="{{ url_for('student_change_password' if current_role=='student' else 'teacher_change_password') }}">Change password</a><a class="logout" href="{{ url_for('logout') }}">Sign out ↗</a></div>
+
+<a class="nav-link {{ 'active' if request.endpoint=='ai_assistant' else '' }}"
+   href="{{ url_for('ai_assistant') }}">
+  <span>✦</span> AI Assistant
+</a>
+</nav>
+
+<div class="sidebar-bottom"><div class="profile"><span class="avatar">{{ current_user[:1]|upper }}</span><span><b>{{ current_user }}</b><small>{{ 'Student' if current_role=='student' else 'Teacher' }}</small></span></div><a class="logout" href="{{ url_for('student_change_password' if current_role=='student' else 'teacher_change_password') }}">Change password</a><a class="logout" href="{{ url_for('logout') }}">Sign out ↗</a></div>
 </aside>{% endif %}
 <main class="main {{ 'main-login' if not current_user else '' }}">
 {% if current_user %}<header class="topbar"><div><span class="eyebrow">ATTENDANCE MANAGEMENT</span><h1>{% block heading %}Overview{% endblock %}</h1></div><div class="top-date"><span class="date-dot"></span>{{ today }}</div></header>{% endif %}
