@@ -59,6 +59,54 @@
   const sendButton = document.getElementById("ai-send");
   const clearButton = document.getElementById("clear-chat");
 
+  // Safely render bold text
+  function appendInlineFormatting(element, text) {
+    const parts = String(text).split(/(\*\*.*?\*\*)/g);
+
+    parts.forEach(function (part) {
+      if (part.startsWith("**") && part.endsWith("**")) {
+        const strong = document.createElement("strong");
+        strong.textContent = part.slice(2, -2);
+        element.appendChild(strong);
+      } else {
+        element.appendChild(document.createTextNode(part));
+      }
+    });
+  }
+
+  // Format AI response
+  function renderBotMessage(bubble, text) {
+    bubble.replaceChildren();
+
+    let normalizedText = String(text || "")
+      .replace(/\r\n/g, "\n")
+      .replace(/(#{1,3}\s)/g, "\n$1")
+      .replace(/(\*\*[^*]+:\*\*)/g, "\n$1");
+
+    normalizedText.split("\n").forEach(function (line) {
+      const cleanLine = line.trim();
+      const p = document.createElement("p");
+
+      if (!cleanLine) {
+        p.className = "ai-space";
+      } else if (/^#{1,3}\s/.test(cleanLine)) {
+        const heading = document.createElement("strong");
+        appendInlineFormatting(
+          heading,
+          cleanLine.replace(/^#{1,3}\s+/, "")
+        );
+        p.appendChild(heading);
+      } else if (/^[-*]\s+/.test(cleanLine)) {
+        p.textContent = "• ";
+        appendInlineFormatting(p, cleanLine.replace(/^[-*]\s+/, ""));
+      } else {
+        appendInlineFormatting(p, cleanLine);
+      }
+
+      bubble.appendChild(p);
+    });
+  }
+
   function addMessage(text, type) {
     const row = document.createElement("div");
     row.className = "ai-message " + type;
@@ -70,66 +118,19 @@
     const bubble = document.createElement("div");
     bubble.className = "ai-bubble";
 
-    // Safe text formatting: headings, bold text and bullet points
-      if (type === "bot") {
-        const normalizedText = String(text)
-          .replace(/\s+(#{1,3}\s)/g, "\n$1")
-          .replace(/\s+(\*\*[^*]+:\*\*)/g, "\n$1");
-
-        function appendInlineFormatting(element, value) {
-          const parts = value.split(/(\*\*[^*]+\*\*)/g);
-
-          parts.forEach(function (part) {
-            if (part.startsWith("**") && part.endsWith("**")) {
-              const strong = document.createElement("strong");
-              strong.textContent = part.slice(2, -2);
-              element.appendChild(strong);
-            } else {
-              element.appendChild(document.createTextNode(part));
-            }
-          });
-        }
-
-        normalizedText.split("\n").forEach(function (line) {
-          const cleanLine = line.trim();
-          const p = document.createElement("p");
-
-          if (!cleanLine) {
-            p.className = "ai-space";
-          } else if (cleanLine.startsWith("### ")) {
-            const heading = document.createElement("strong");
-            appendInlineFormatting(heading, cleanLine.slice(4));
-            p.appendChild(heading);
-          } else if (cleanLine.startsWith("## ")) {
-            const heading = document.createElement("strong");
-            appendInlineFormatting(heading, cleanLine.slice(3));
-            p.appendChild(heading);
-          } else if (cleanLine.startsWith("# ")) {
-            const heading = document.createElement("strong");
-            appendInlineFormatting(heading, cleanLine.slice(2));
-            p.appendChild(heading);
-          } else if (
-            cleanLine.startsWith("- ") ||
-            cleanLine.startsWith("* ")
-          ) {
-            p.textContent = "• ";
-            appendInlineFormatting(p, cleanLine.slice(2));
-          } else {
-            appendInlineFormatting(p, cleanLine);
-          }
-
-          bubble.appendChild(p);
-        });
-      } else {
-        bubble.textContent = text;
-      }
+    if (type === "bot") {
+      renderBotMessage(bubble, text);
+    } else {
+      bubble.textContent = text;
+    }
 
     row.appendChild(avatar);
     row.appendChild(bubble);
     messages.appendChild(row);
     messages.scrollTop = messages.scrollHeight;
+
     return bubble;
-}
+  }
 
   async function sendMessage(message) {
     if (!message.trim()) return;
@@ -154,9 +155,12 @@
         throw new Error(data.error || "AI request failed.");
       }
 
-      waiting.textContent = data.reply || "No response received.";
+      // IMPORTANT: Render the actual reply using the formatter
+      renderBotMessage(waiting, data.reply || "No response received.");
+
     } catch (error) {
-      waiting.textContent = error.message || "Something went wrong. Please try again.";
+      waiting.textContent =
+        error.message || "Something went wrong. Please try again.";
     } finally {
       sendButton.disabled = false;
       sendButton.textContent = "Send ➤";
@@ -177,7 +181,7 @@
   });
 
   clearButton.addEventListener("click", function () {
-    messages.innerHTML = "";
+    messages.replaceChildren();
     addMessage("Chat cleared! What would you like to know?", "bot");
   });
 })();
