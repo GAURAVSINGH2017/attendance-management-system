@@ -1529,13 +1529,14 @@ def leave_document(leave_id, doc_id):
 def ai_assistant():
     return render_template("ai_assistant.html")
 
-
 @app.post("/api/ai-chat")
 @login_required
 def ai_chat():
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
-        return jsonify({"error": "AI service is not configured. Please contact the administrator."}), 503
+        return jsonify({
+            "error": "AI service is not configured. Please contact the administrator."
+        }), 503
 
     data = request.get_json(silent=True) or {}
     message = str(data.get("message", "")).strip()
@@ -1550,12 +1551,14 @@ def ai_chat():
 
     if role == "student":
         student_id = session.get("student_id")
+
         if not student_id:
             return jsonify({"error": "Student account not found."}), 403
 
         student = query(
             """SELECT id, full_name, roll_no, class_name, section
-               FROM students WHERE id=%s AND active=1""",
+               FROM students
+               WHERE id=%s AND active=1""",
             (student_id,),
             one=True
         )
@@ -1564,68 +1567,129 @@ def ai_chat():
             return jsonify({"error": "Student account not found."}), 403
 
         attendance = query(
-            """SELECT COUNT(*) AS total,
-               COALESCE(SUM(status='Present'),0) AS present,
-               COALESCE(SUM(status='Absent'),0) AS absent,
-               COALESCE(SUM(status='Late'),0) AS late,
-               ROUND(100*COALESCE(SUM(status='Present'),0) /
-               NULLIF(COUNT(*),0),1) AS percentage
-               FROM attendance WHERE student_id=%s""",
+            """SELECT
+                   COUNT(*) AS total,
+                   COALESCE(SUM(status='Present'), 0) AS present,
+                   COALESCE(SUM(status='Absent'), 0) AS absent,
+                   COALESCE(SUM(status='Late'), 0) AS late
+               FROM attendance
+               WHERE student_id=%s""",
             (student_id,),
             one=True
-        )
+        ) or {}
+
+        total = int(attendance.get("total") or 0)
+        present = int(attendance.get("present") or 0)
+        absent = int(attendance.get("absent") or 0)
+        late = int(attendance.get("late") or 0)
+
+        percentage = round((present / total) * 100, 1) if total > 0 else None
+
+        if percentage is None:
+            percentage_text = "No attendance records available."
+        else:
+            percentage_text = f"{percentage}%"
 
         context = (
-            f"Student: {student['full_name']}\n"
-            f"Class: {student['class_name']}, Section: {student['section']}\n"
-            f"Attendance summary: {attendance}"
+            "STUDENT ATTENDANCE DATA:\n"
+            f"Student name: {student['full_name']}\n"
+            f"Roll number: {student['roll_no']}\n"
+            f"Class: {student['class_name']}\n"
+            f"Section: {student['section']}\n"
+            f"Total marked records: {total}\n"
+            f"Present: {present}\n"
+            f"Absent: {absent}\n"
+            f"Late: {late}\n"
+            f"Calculated attendance percentage: {percentage_text}\n"
+            "Calculation rule: Present divided by total marked records, multiplied by 100.\n"
+            "Late and Absent records are included in total marked records, "
+            "but only Present records count in the numerator."
         )
 
         system_prompt = (
-            "You are AttendEase AI, a helpful attendance assistant. "
+            "You are AttendEase AI, a helpful attendance assistant for students. "
             "Answer in simple English or Hinglish according to the user's language. "
-            "Use only the supplied attendance information for personal attendance questions. "
-            "Never invent attendance records."
+            "Use only the supplied student data for personal attendance questions. "
+            "The attendance percentage is already calculated by the application. "
+            "Never recalculate, change, or guess the supplied percentage or counts. "
+            "If there are no attendance records, clearly say that no records are available. "
+            "Never invent attendance records. "
+            "Format answers using short headings, bullet points and clear spacing "
+            "when useful."
         )
 
     elif role == "teacher":
         summary = query(
-            """SELECT COUNT(*) AS total,
-               COALESCE(SUM(status='Present'),0) AS present,
-               COALESCE(SUM(status='Absent'),0) AS absent,
-               COALESCE(SUM(status='Late'),0) AS late
+            """SELECT
+                   COUNT(*) AS total,
+                   COALESCE(SUM(status='Present'), 0) AS present,
+                   COALESCE(SUM(status='Absent'), 0) AS absent,
+                   COALESCE(SUM(status='Late'), 0) AS late
                FROM attendance""",
             one=True
-        )
+        ) or {}
 
-        context = f"Overall attendance summary: {summary}"
+        total = int(summary.get("total") or 0)
+        present = int(summary.get("present") or 0)
+        absent = int(summary.get("absent") or 0)
+        late = int(summary.get("late") or 0)
+
+        percentage = round((present / total) * 100, 1) if total > 0 else None
+
+        if percentage is None:
+            percentage_text = "No attendance records available."
+        else:
+            percentage_text = f"{percentage}%"
+
+        context = (
+            "OVERALL ATTENDANCE DATA:\n"
+            f"Total marked records: {total}\n"
+            f"Present: {present}\n"
+            f"Absent: {absent}\n"
+            f"Late: {late}\n"
+            f"Calculated overall attendance percentage: {percentage_text}\n"
+            "These are overall attendance entries, not unique student counts.\n"
+            "Calculation rule: Present divided by total marked records, multiplied by 100.\n"
+            "Late and Absent records are included in total marked records, "
+            "but only Present records count in the numerator."
+        )
 
         system_prompt = (
             "You are AttendEase AI, a helpful assistant for teachers. "
             "Answer in simple English or Hinglish according to the user's language. "
-            "Use the supplied overall attendance summary when relevant. "
-            "Do not invent student records or claim to perform actions."
+            "Use the supplied overall attendance data when relevant. "
+            "The attendance percentage is already calculated by the application. "
+            "Never recalculate, change, or guess the supplied percentage or counts. "
+            "Do not invent student records or claim to perform actions. "
+            "Format answers using short headings, bullet points and clear spacing "
+            "when useful."
         )
 
     else:
         return jsonify({"error": "Access denied."}), 403
 
     model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+
     url = (
-    "https://generativelanguage.googleapis.com/v1beta/models/"
-    + model + ":generateContent"
-)
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        + model + ":generateContent"
+    )
 
     payload = {
         "systemInstruction": {
-            "parts": [{"text": system_prompt + "\n\n" + context}]
+            "parts": [{
+                "text": system_prompt + "\n\n" + context
+            }]
         },
         "contents": [
-            {"role": "user", "parts": [{"text": message}]}
+            {
+                "role": "user",
+                "parts": [{"text": message}]
+            }
         ],
         "generationConfig": {
             "maxOutputTokens": 500,
-            "temperature": 0.5
+            "temperature": 0.3
         }
     }
 
@@ -1644,18 +1708,21 @@ def ai_chat():
             result = json.loads(response.read().decode("utf-8"))
 
         answer = result["candidates"][0]["content"]["parts"][0]["text"]
+
         return jsonify({"reply": answer})
 
     except urllib.error.HTTPError as error:
-            error_body = error.read().decode("utf-8", "replace")
-            app.logger.error(
-                "Gemini API returned HTTP %s: %s",
-                error.code,
-                error_body[:2000]
-            )
-            return jsonify({
-                "error": "AI service request failed. Please try again later."
-            }), 502
+        error_body = error.read().decode("utf-8", "replace")
+
+        app.logger.error(
+            "Gemini API returned HTTP %s: %s",
+            error.code,
+            error_body[:2000]
+        )
+
+        return jsonify({
+            "error": "AI service request failed. Please try again later."
+        }), 502
 
     except (urllib.error.URLError, TimeoutError):
         return jsonify({
@@ -1669,6 +1736,9 @@ def ai_chat():
 
     except Exception:
         app.logger.exception("AI assistant error")
-        return jsonify({"error": "Something went wrong. Please try again."}), 500
+
+        return jsonify({
+            "error": "Something went wrong. Please try again."
+        }), 500
 if __name__ == "__main__":
     app.run(debug=os.getenv("FLASK_DEBUG", "false").lower() == "true")
