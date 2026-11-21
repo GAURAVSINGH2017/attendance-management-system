@@ -1647,7 +1647,8 @@ def ai_chat():
         return jsonify({"reply": answer})
 
     except urllib.error.HTTPError as error:
-        app.logger.error("Gemini API returned HTTP %s", error.code)
+    error_body = error.read().decode("utf-8", "replace")
+    app.logger.error("Gemini API returned HTTP %s: %s", error.code, error_body[:2000])
         return jsonify({
             "error": "AI service request failed. Please try again later."
         }), 502
