@@ -69,14 +69,43 @@
 
     const bubble = document.createElement("div");
     bubble.className = "ai-bubble";
-    bubble.textContent = text;
+
+    // Safe text formatting: headings, bold text and bullet points
+    if (type === "bot") {
+        const lines = String(text).split("\n");
+
+        lines.forEach(function (line) {
+            const p = document.createElement("p");
+            const cleanLine = line.trim();
+
+            if (!cleanLine) {
+                p.className = "ai-space";
+            } else if (cleanLine.startsWith("### ")) {
+                const heading = document.createElement("strong");
+                heading.textContent = cleanLine.slice(4);
+                p.appendChild(heading);
+            } else if (cleanLine.startsWith("## ")) {
+                const heading = document.createElement("strong");
+                heading.textContent = cleanLine.slice(3);
+                p.appendChild(heading);
+            } else if (cleanLine.startsWith("- ") || cleanLine.startsWith("* ")) {
+                p.textContent = "• " + cleanLine.slice(2);
+            } else {
+                p.textContent = cleanLine;
+            }
+
+            bubble.appendChild(p);
+        });
+    } else {
+        bubble.textContent = text;
+    }
 
     row.appendChild(avatar);
     row.appendChild(bubble);
     messages.appendChild(row);
     messages.scrollTop = messages.scrollHeight;
     return bubble;
-  }
+}
 
   async function sendMessage(message) {
     if (!message.trim()) return;
