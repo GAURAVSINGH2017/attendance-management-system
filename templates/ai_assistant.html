@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+
+{% block title %}AI Assistant{% endblock %}
+{% block heading %}AI Assistant{% endblock %}
+
+{% block content %}
+<div class="ai-page">
+  <div class="ai-welcome">
+    <div class="ai-icon">✦</div>
+    <h2>Meet AttendEase AI</h2>
+    <p>Your smart attendance assistant. Ask questions and get help instantly.</p>
+  </div>
+
+  <div class="ai-chat-panel">
+    <div class="ai-chat-header">
+      <div>
+        <strong>AttendEase AI</strong>
+        <small><span class="ai-online-dot"></span> Online assistant</small>
+      </div>
+      <button type="button" id="clear-chat" class="ai-clear">Clear chat</button>
+    </div>
+
+    <div id="ai-messages" class="ai-messages" aria-live="polite">
+      <div class="ai-message bot">
+        <div class="ai-avatar">✦</div>
+        <div class="ai-bubble">
+          Hello! 👋 I'm your AttendEase AI assistant.
+          Ask me about attendance or your attendance summary.
+        </div>
+      </div>
+    </div>
+
+    <div class="ai-suggestions">
+      <button type="button" data-question="Show my attendance summary">My attendance</button>
+      <button type="button" data-question="How can I improve my attendance?">Improve attendance</button>
+      <button type="button" data-question="Explain my attendance percentage">Attendance percentage</button>
+    </div>
+
+    <form id="ai-chat-form" class="ai-input-area">
+      <input
+        id="ai-message"
+        type="text"
+        maxlength="1000"
+        placeholder="Ask AttendEase AI anything..."
+        autocomplete="off"
+        required
+      >
+      <button type="submit" id="ai-send">Send ➤</button>
+    </form>
+    <p class="ai-disclaimer">AI can make mistakes. Verify important attendance information.</p>
+  </div>
+</div>
+
+<script>
+(function () {
+  const form = document.getElementById("ai-chat-form");
+  const input = document.getElementById("ai-message");
+  const messages = document.getElementById("ai-messages");
+  const sendButton = document.getElementById("ai-send");
+  const clearButton = document.getElementById("clear-chat");
+
+  function addMessage(text, type) {
+    const row = document.createElement("div");
+    row.className = "ai-message " + type;
+
+    const avatar = document.createElement("div");
+    avatar.className = "ai-avatar";
+    avatar.textContent = type === "bot" ? "✦" : "You";
+
+    const bubble = document.createElement("div");
+    bubble.className = "ai-bubble";
+    bubble.textContent = text;
+
+    row.appendChild(avatar);
+    row.appendChild(bubble);
+    messages.appendChild(row);
+    messages.scrollTop = messages.scrollHeight;
+    return bubble;
+  }
+
+  async function sendMessage(message) {
+    if (!message.trim()) return;
+
+    addMessage(message, "user");
+    input.value = "";
+    sendButton.disabled = true;
+    sendButton.textContent = "Thinking...";
+
+    const waiting = addMessage("Thinking...", "bot");
+
+    try {
+      const response = await fetch("/api/ai-chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: message })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "AI request failed.");
+      }
+
+      waiting.textContent = data.reply || "No response received.";
+    } catch (error) {
+      waiting.textContent = error.message || "Something went wrong. Please try again.";
+    } finally {
+      sendButton.disabled = false;
+      sendButton.textContent = "Send ➤";
+      input.focus();
+      messages.scrollTop = messages.scrollHeight;
+    }
+  }
+
+  form.addEventListener("submit", function (event) {
+    event.preventDefault();
+    sendMessage(input.value);
+  });
+
+  document.querySelectorAll("[data-question]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      sendMessage(button.dataset.question);
+    });
+  });
+
+  clearButton.addEventListener("click", function () {
+    messages.innerHTML = "";
+    addMessage("Chat cleared! What would you like to know?", "bot");
+  });
+})();
+</script>
+{% endblock %}
